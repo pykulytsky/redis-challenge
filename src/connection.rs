@@ -32,8 +32,10 @@ impl Connection {
         println!("accepted new connection: {}", self.addr);
         let mut buf = vec![];
         loop {
-            let _ = self.read(&mut buf).await?;
-            self.write_all(&Resp::SimpleString("PONG").encode()).await?;
+            let n = self.read(&mut buf).await?;
+            if n != 0 {
+                self.write_all(&Resp::SimpleString("PONG").encode()).await?;
+            }
         }
     }
 }

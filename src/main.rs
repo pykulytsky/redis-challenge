@@ -16,18 +16,5 @@ async fn main() {
     loop {
         let connection = Connection::new(listener.accept().await.unwrap());
         tokio::spawn(async move { connection.handle().await });
-        // match stream {
-        //     Ok(mut stream) => {
-        //         println!("accepted new connection: {}", stream.1);
-        //         stream
-        //             .0
-        //             .write_all(&Resp::SimpleString("PONG").encode())
-        //             .await
-        //             .unwrap();
-        //     }
-        //     Err(e) => {
-        //         println!("error: {}", e);
-        //     }
-        // }
     }
 }

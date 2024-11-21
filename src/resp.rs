@@ -36,11 +36,19 @@ impl<'r> Resp<'r> {
         use RespError::*;
         let len = input.len();
         let resp_value = match input[0] {
-            b'+' => Ok(SimpleString(from_utf8(&input[1..len - 2])?)),
-            b'-' => Ok(SimpleError(from_utf8(&input[1..len - 2])?)),
-            b':' => Ok(Integer(from_utf8(&input[1..len - 2])?.parse::<i64>()?)),
+            b'+' => Ok(SimpleString(from_utf8(
+                input.get(1..len - 2).ok_or(NotEnoughtParts)?,
+            )?)),
+            b'-' => Ok(SimpleError(from_utf8(
+                input.get(1..len - 2).ok_or(NotEnoughtParts)?,
+            )?)),
+            b':' => Ok(Integer(
+                from_utf8(input.get(1..len - 2).ok_or(NotEnoughtParts)?)?.parse::<i64>()?,
+            )),
             b'$' => {
-                let mut parts = &mut input[1..]
+                let mut parts = &mut input
+                    .get(1..)
+                    .ok_or(NotEnoughtParts)?
                     .split(|b| b == &0xA)
                     .map(|line| line.strip_suffix(&[0xD]).unwrap_or(line));
                 let mut length =
@@ -55,8 +63,12 @@ impl<'r> Resp<'r> {
             b'*' => {
                 let (length_string, mut rest) =
                     input.split_at(input.iter().position(|b| b == &0xA).unwrap() + 1);
-                let length =
-                    from_utf8(&length_string[1..length_string.len() - 2])?.parse::<isize>()?;
+                let length = from_utf8(
+                    length_string
+                        .get(1..length_string.len() - 2)
+                        .ok_or(NotEnoughtParts)?,
+                )?
+                .parse::<isize>()?;
                 let mut array = vec![];
                 for i in 0..length {
                     let (value, new_rest) = Self::parse_inner(rest)?;

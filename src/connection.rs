@@ -9,7 +9,7 @@ use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
 
-use crate::resp::Resp;
+use crate::resp::{Resp, RespError};
 
 #[derive(Debug)]
 pub struct Connection {
@@ -21,6 +21,9 @@ pub struct Connection {
 pub enum ConnectionError {
     #[error("IO error")]
     Io(#[from] tokio::io::Error),
+
+    #[error("Protocol error")]
+    Protocol(#[from] RespError),
 }
 
 impl Connection {
@@ -30,12 +33,15 @@ impl Connection {
 
     pub async fn handle(mut self) -> Result<(), ConnectionError> {
         println!("accepted new connection: {}", self.addr);
-        let mut buf = vec![];
+        let mut buf = Vec::with_capacity(512);
         loop {
-            let n = self.read(&mut buf).await?;
-            if n != 0 {
-                self.write_all(&Resp::SimpleString("PONG").encode()).await?;
+            let n = self.read_buf(&mut buf).await?;
+            if n == 0 {
+                continue;
             }
+            // let data = Resp::parse(&buf[..n])?;
+            self.write_all(&Resp::SimpleString("PONG").encode()).await?;
+            buf.clear();
         }
     }
 }

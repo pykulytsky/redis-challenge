@@ -1,6 +1,9 @@
 use std::{
+    borrow::Cow,
+    collections::HashMap,
     net::SocketAddr,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 use thiserror::Error;
@@ -8,16 +11,19 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
+use tokio::sync::RwLock;
 
 use crate::{
     command::{Command, CommandError},
     resp::{Resp, RespError},
+    Db,
 };
 
 #[derive(Debug)]
 pub struct Connection {
     pub tcp: TcpStream,
     pub addr: SocketAddr,
+    db: Db,
 }
 
 #[derive(Debug, Error)]
@@ -33,8 +39,8 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub fn new((tcp, addr): (TcpStream, SocketAddr)) -> Self {
-        Self { tcp, addr }
+    pub fn new((tcp, addr): (TcpStream, SocketAddr), db: Db) -> Self {
+        Self { tcp, addr, db }
     }
 
     pub async fn handle(mut self) -> Result<(), ConnectionError> {
@@ -50,7 +56,7 @@ impl Connection {
                     self.handle_command(c).await?;
                 }
                 Err(err) => {
-                    self.write_all(&Resp::SimpleError("Invalid command").encode())
+                    self.write_all(&Resp::SimpleError(Cow::Borrowed("Invalid command")).encode())
                         .await?;
                     eprintln!("{}", err);
                 }
@@ -59,10 +65,27 @@ impl Connection {
         }
     }
 
-    pub async fn handle_command(&mut self, command: Command) -> Result<(), ConnectionError> {
+    pub async fn handle_command<'c>(
+        &mut self,
+        command: Command<'c>,
+    ) -> Result<(), ConnectionError> {
         let resp = match &command {
-            Command::Ping => Resp::SimpleString("PONG"),
-            Command::Echo(msg) => Resp::BulkString(msg),
+            Command::Ping => Resp::simple_string("PONG"),
+            Command::Echo(msg) => Resp::bulk_string(msg),
+            Command::Get(key) => self
+                .db
+                .read()
+                .await
+                .get(key)
+                .cloned()
+                .unwrap_or(Resp::bulk_string("")),
+            Command::Set(key, value) => {
+                self.db
+                    .write()
+                    .await
+                    .insert(key.clone().to_owned(), value.clone().to_owned());
+                Resp::bulk_string("OK")
+            }
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

@@ -1,16 +1,20 @@
 #![allow(dead_code, unused)]
-use std::io::Write;
 use std::str::{self, from_utf8, Utf8Error};
+use std::{borrow::Cow, io::Write};
 use thiserror::Error;
 
 pub const CTRLF: &[u8] = b"\r\n";
 
-pub enum Resp<'r> {
-    SimpleString(&'r str),
-    SimpleError(&'r str),
+#[derive(Eq, Hash, PartialEq)]
+pub enum Resp<'r, S = str>
+where
+    S: ToOwned<Owned = String> + ?Sized,
+{
+    SimpleString(Cow<'r, S>),
+    SimpleError(Cow<'r, S>),
     Integer(i64),
-    BulkString(&'r str),
-    Array(Vec<Resp<'r>>),
+    BulkString(Cow<'r, S>),
+    Array(Vec<Resp<'r, S>>),
 }
 
 #[derive(Debug, Error)]
@@ -30,19 +34,32 @@ pub enum RespError {
     #[error("There is no enough parts for the provided type")]
     NotEnoughtParts,
 }
-
+impl<'input, S> Resp<'input, S>
+where
+    S: ToOwned<Owned = String> + ?Sized + 'input,
+{
+    pub fn to_owned(self) -> Resp<'static, S> {
+        match self {
+            Resp::SimpleString(s) => Resp::SimpleString(Cow::Owned(s.into_owned())),
+            Resp::SimpleError(e) => Resp::SimpleError(Cow::Owned(e.into_owned())),
+            Resp::Integer(i) => Resp::Integer(i),
+            Resp::BulkString(bs) => Resp::BulkString(Cow::Owned(bs.into_owned())),
+            Resp::Array(array) => Resp::Array(array.into_iter().map(|i| i.to_owned()).collect()),
+        }
+    }
+}
 impl<'r> Resp<'r> {
     pub fn parse_inner<'i: 'r>(input: &'i [u8]) -> Result<(Self, &'i [u8]), RespError> {
         use Resp::*;
         use RespError::*;
         let len = input.len();
         let resp_value = match input[0] {
-            b'+' => Ok(SimpleString(from_utf8(
+            b'+' => Ok(SimpleString(Cow::Borrowed(from_utf8(
                 input.get(1..len - 2).ok_or(NotEnoughtParts)?,
-            )?)),
-            b'-' => Ok(SimpleError(from_utf8(
+            )?))),
+            b'-' => Ok(SimpleError(Cow::Borrowed(from_utf8(
                 input.get(1..len - 2).ok_or(NotEnoughtParts)?,
-            )?)),
+            )?))),
             b':' => Ok(Integer(
                 from_utf8(input.get(1..len - 2).ok_or(NotEnoughtParts)?)?.parse::<i64>()?,
             )),
@@ -59,7 +76,7 @@ impl<'r> Resp<'r> {
                 }
                 let string = from_utf8(parts.next().ok_or(NotEnoughtParts)?)?;
                 assert_eq!(string.len(), length as usize);
-                Ok(BulkString(string))
+                Ok(BulkString(Cow::Borrowed(string)))
             }
             b'*' => {
                 let (length_string, mut rest) =
@@ -83,7 +100,7 @@ impl<'r> Resp<'r> {
         };
 
         let (_, mut rest) = input.split_at(input.iter().position(|b| b == &0xA).unwrap() + 1);
-        if matches!(resp_value, Ok(BulkString(s))  if !s.is_empty()) {
+        if matches!(resp_value, Ok(BulkString(ref s))  if !s.is_empty()) {
             rest = rest
                 .split_at(rest.iter().position(|b| b == &0xA).unwrap() + 1)
                 .1;
@@ -124,7 +141,7 @@ impl<'r> Resp<'r> {
             }
             Resp::BulkString(b) => {
                 buf.push(b'$');
-                write!(buf, "{}", b.len());
+                write!(buf, "{}", if !b.is_empty() { b.len() as isize } else { -1 });
                 buf.extend(CTRLF);
                 buf.extend(b.as_bytes());
                 buf.extend(CTRLF);
@@ -146,6 +163,14 @@ impl<'r> Resp<'r> {
 
         Ok(resp)
     }
+
+    pub fn simple_string(input: &'r str) -> Self {
+        Self::SimpleString(Cow::Borrowed(input))
+    }
+
+    pub fn bulk_string(input: &'r str) -> Self {
+        Self::BulkString(Cow::Borrowed(input))
+    }
 }
 
 impl<'r> std::fmt::Debug for Resp<'r> {
@@ -163,6 +188,21 @@ impl<'r> std::fmt::Debug for Resp<'r> {
                 }
                 write!(f, "]")
             }
+        }
+    }
+}
+
+impl<'input, S> Clone for Resp<'input, S>
+where
+    S: ToOwned<Owned = String> + ?Sized + 'input,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Resp::SimpleString(cow) => Resp::SimpleString(cow.clone()),
+            Resp::SimpleError(cow) => Resp::SimpleString(cow.clone()),
+            Resp::Integer(i) => Resp::Integer(*i),
+            Resp::BulkString(cow) => Resp::SimpleString(cow.clone()),
+            Resp::Array(vec) => Resp::Array(vec.clone()),
         }
     }
 }

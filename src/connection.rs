@@ -9,7 +9,10 @@ use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
 
-use crate::resp::{Resp, RespError};
+use crate::{
+    command::{Command, CommandError},
+    resp::{Resp, RespError},
+};
 
 #[derive(Debug)]
 pub struct Connection {
@@ -24,6 +27,9 @@ pub enum ConnectionError {
 
     #[error("Protocol error")]
     Protocol(#[from] RespError),
+
+    #[error("Command error")]
+    Command(#[from] CommandError),
 }
 
 impl Connection {
@@ -39,10 +45,27 @@ impl Connection {
             if n == 0 {
                 continue;
             }
-            // let data = Resp::parse(&buf[..n])?;
-            self.write_all(&Resp::SimpleString("PONG").encode()).await?;
+            match Command::parse(&buf[..n]) {
+                Ok(c) => {
+                    self.handle_command(c).await?;
+                }
+                Err(err) => {
+                    self.write_all(&Resp::SimpleError("Invalid command").encode())
+                        .await?;
+                    eprintln!("{}", err);
+                }
+            }
             buf.clear();
         }
+    }
+
+    pub async fn handle_command(&mut self, command: Command) -> Result<(), ConnectionError> {
+        let resp = match &command {
+            Command::Ping => Resp::SimpleString("PONG"),
+            Command::Echo(msg) => Resp::BulkString(msg),
+        };
+        self.write_all(&resp.encode()).await?;
+        Ok(())
     }
 }
 

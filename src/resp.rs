@@ -1,4 +1,5 @@
 #![allow(dead_code, unused)]
+use std::io::Write;
 use std::str::{self, from_utf8, Utf8Error};
 use thiserror::Error;
 
@@ -123,14 +124,14 @@ impl<'r> Resp<'r> {
             }
             Resp::BulkString(b) => {
                 buf.push(b'$');
-                buf.push(b.len() as u8);
+                write!(buf, "{}", b.len());
                 buf.extend(CTRLF);
                 buf.extend(b.as_bytes());
                 buf.extend(CTRLF);
             }
             Resp::Array(vec) => {
                 buf.push(b'*');
-                buf.push(vec.len() as u8);
+                write!(buf, "{}", vec.len());
                 for i in vec {
                     buf.extend(i.encode());
                 }

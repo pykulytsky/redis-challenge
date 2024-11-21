@@ -2,9 +2,10 @@
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
-use crate::resp::Resp;
+use crate::{connection::Connection, resp::Resp};
 
 mod command;
+mod connection;
 mod resp;
 
 #[tokio::main]
@@ -13,19 +14,20 @@ async fn main() {
         .await
         .expect("Can not listen to port 6379");
     loop {
-        let stream = listener.accept().await;
-        match stream {
-            Ok(mut stream) => {
-                println!("accepted new connection: {}", stream.1);
-                stream
-                    .0
-                    .write_all(&Resp::SimpleString("PONG").encode())
-                    .await
-                    .unwrap();
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
+        let connection = Connection::new(listener.accept().await.unwrap());
+        tokio::spawn(async move { connection.handle().await });
+        // match stream {
+        //     Ok(mut stream) => {
+        //         println!("accepted new connection: {}", stream.1);
+        //         stream
+        //             .0
+        //             .write_all(&Resp::SimpleString("PONG").encode())
+        //             .await
+        //             .unwrap();
+        //     }
+        //     Err(e) => {
+        //         println!("error: {}", e);
+        //     }
+        // }
     }
 }

@@ -34,20 +34,22 @@ pub enum RespError {
     #[error("There is no enough parts for the provided type")]
     NotEnoughtParts,
 }
+
 impl<'input, S> Resp<'input, S>
 where
     S: ToOwned<Owned = String> + ?Sized + 'input,
 {
-    pub fn to_owned(self) -> Resp<'static, S> {
+    pub fn into_owned(self) -> Resp<'static, S> {
         match self {
             Resp::SimpleString(s) => Resp::SimpleString(Cow::Owned(s.into_owned())),
             Resp::SimpleError(e) => Resp::SimpleError(Cow::Owned(e.into_owned())),
             Resp::Integer(i) => Resp::Integer(i),
             Resp::BulkString(bs) => Resp::BulkString(Cow::Owned(bs.into_owned())),
-            Resp::Array(array) => Resp::Array(array.into_iter().map(|i| i.to_owned()).collect()),
+            Resp::Array(array) => Resp::Array(array.into_iter().map(|i| i.into_owned()).collect()),
         }
     }
 }
+
 impl<'r> Resp<'r> {
     pub fn parse_inner<'i: 'r>(input: &'i [u8]) -> Result<(Self, &'i [u8]), RespError> {
         use Resp::*;
@@ -144,7 +146,9 @@ impl<'r> Resp<'r> {
                 write!(buf, "{}", if !b.is_empty() { b.len() as isize } else { -1 });
                 buf.extend(CTRLF);
                 buf.extend(b.as_bytes());
-                buf.extend(CTRLF);
+                if !b.is_empty() {
+                    buf.extend(CTRLF);
+                }
             }
             Resp::Array(vec) => {
                 buf.push(b'*');
@@ -170,6 +174,14 @@ impl<'r> Resp<'r> {
 
     pub fn bulk_string(input: &'r str) -> Self {
         Self::BulkString(Cow::Borrowed(input))
+    }
+
+    pub fn expect_integer(&self) -> Option<i64> {
+        match self {
+            Resp::Integer(i) => Some(*i),
+            Resp::BulkString(s) => s.parse().ok(),
+            _ => None,
+        }
     }
 }
 

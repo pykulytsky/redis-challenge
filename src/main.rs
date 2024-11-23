@@ -21,6 +21,8 @@ async fn main() {
     loop {
         let db = db.clone();
         let connection = Connection::new(listener.accept().await.unwrap(), db);
-        tokio::spawn(async move { connection.handle().await });
+        tokio::spawn(async move {
+            connection.handle().await
+        });
     }
 }

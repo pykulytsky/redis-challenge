@@ -8,7 +8,7 @@ pub enum Command<'c> {
     Ping,
     Echo(String),
     Get(Resp<'c>),
-    Set(Resp<'c>, Resp<'c>),
+    Set(Resp<'c>, Resp<'c>, Option<i64>),
 }
 
 #[derive(Debug, Error)]
@@ -47,7 +47,9 @@ impl<'c> Command<'c> {
                     &"SET" => {
                         let key = array.get(1).ok_or(IncorrectFormat)?;
                         let value = array.get(2).ok_or(IncorrectFormat)?;
-                        Ok(Self::Set(key.clone(), value.clone()))
+                        assert!(matches!(array.get(3), Some(Resp::BulkString(_)) | None));
+                        let expiry = array.get(4).and_then(|e| e.expect_integer());
+                        Ok(Self::Set(key.clone(), value.clone(), expiry))
                     }
                     c => Err(UnsupportedCommand(c.to_string())),
                 },

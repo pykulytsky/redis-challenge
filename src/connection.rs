@@ -5,6 +5,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::Duration,
 };
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
@@ -45,24 +46,25 @@ impl Connection {
 
     pub async fn handle(mut self) -> Result<(), ConnectionError> {
         println!("accepted new connection: {}", self.addr);
-        let mut buf = Vec::with_capacity(512);
+        let mut buf = [0; 512];
         loop {
-            let n = self.read_buf(&mut buf).await?;
+            let n = self.read(&mut buf).await?;
             if n == 0 {
-                continue;
+                break;
             }
             match Command::parse(&buf[..n]) {
                 Ok(c) => {
                     self.handle_command(c).await?;
                 }
                 Err(err) => {
-                    self.write_all(&Resp::SimpleError(Cow::Borrowed("Invalid command")).encode())
+                    self.write_all(&Resp::SimpleError(Cow::Borrowed("unknown command")).encode())
                         .await?;
                     eprintln!("{}", err);
                 }
             }
-            buf.clear();
         }
+        self.tcp.shutdown().await.unwrap();
+        Ok(())
     }
 
     pub async fn handle_command<'c>(
@@ -79,11 +81,20 @@ impl Connection {
                 .get(key)
                 .cloned()
                 .unwrap_or(Resp::bulk_string("")),
-            Command::Set(key, value) => {
+            Command::Set(key, value, expiry) => {
                 self.db
                     .write()
                     .await
-                    .insert(key.clone().to_owned(), value.clone().to_owned());
+                    .insert(key.clone().into_owned(), value.clone().into_owned());
+                if let Some(expiry) = expiry {
+                    let expiry = *expiry;
+                    let db = self.db.clone();
+                    let key = key.clone().into_owned();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(expiry as u64)).await;
+                        db.write().await.remove(&key);
+                    });
+                }
                 Resp::bulk_string("OK")
             }
         };

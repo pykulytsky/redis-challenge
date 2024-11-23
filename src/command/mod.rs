@@ -4,11 +4,18 @@ use crate::resp::{Resp, RespError};
 use thiserror::Error;
 
 #[derive(Debug)]
+pub enum ConfigItem {
+    Dir,
+    DbFileName,
+}
+
+#[derive(Debug)]
 pub enum Command<'c> {
     Ping,
     Echo(String),
     Get(Resp<'c>),
     Set(Resp<'c>, Resp<'c>, Option<i64>),
+    ConfigGet(ConfigItem),
 }
 
 #[derive(Debug, Error)]
@@ -51,6 +58,20 @@ impl<'c> Command<'c> {
                         let expiry = array.get(4).and_then(|e| e.expect_integer());
                         Ok(Self::Set(key.clone(), value.clone(), expiry))
                     }
+                    &"CONFIG" => match array.get(1).ok_or(IncorrectFormat)? {
+                        Resp::BulkString(Cow::Borrowed("GET")) => {
+                            match array.get(2).ok_or(IncorrectFormat)? {
+                                Resp::BulkString(Cow::Borrowed("dir")) => {
+                                    Ok(Self::ConfigGet(ConfigItem::Dir))
+                                }
+                                Resp::BulkString(Cow::Borrowed("dbfilename")) => {
+                                    Ok(Self::ConfigGet(ConfigItem::DbFileName))
+                                }
+                                _ => Err(IncorrectFormat),
+                            }
+                        }
+                        _ => todo!(),
+                    },
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),

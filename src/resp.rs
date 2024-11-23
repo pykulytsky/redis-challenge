@@ -153,6 +153,7 @@ impl<'r> Resp<'r> {
             Resp::Array(vec) => {
                 buf.push(b'*');
                 write!(buf, "{}", vec.len());
+                buf.extend(CTRLF);
                 for i in vec {
                     buf.extend(i.encode());
                 }
@@ -174,6 +175,10 @@ impl<'r> Resp<'r> {
 
     pub fn bulk_string(input: &'r str) -> Self {
         Self::BulkString(Cow::Borrowed(input))
+    }
+
+    pub fn array(input: Vec<Resp<'r>>) -> Self {
+        Self::Array(input)
     }
 
     pub fn expect_integer(&self) -> Option<i64> {

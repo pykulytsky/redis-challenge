@@ -1,3 +1,4 @@
+use core::str;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -15,7 +16,11 @@ use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 
 use crate::{
-    command::{Command, CommandError},
+    command::{
+        Command, CommandError,
+        ConfigItem::{DbFileName, Dir},
+    },
+    config::Config,
     resp::{Resp, RespError},
     Db,
 };
@@ -25,6 +30,7 @@ pub struct Connection {
     pub tcp: TcpStream,
     pub addr: SocketAddr,
     db: Db,
+    config: Config,
 }
 
 #[derive(Debug, Error)]
@@ -40,8 +46,13 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub fn new((tcp, addr): (TcpStream, SocketAddr), db: Db) -> Self {
-        Self { tcp, addr, db }
+    pub fn new((tcp, addr): (TcpStream, SocketAddr), db: Db, config: Config) -> Self {
+        Self {
+            tcp,
+            addr,
+            db,
+            config,
+        }
     }
 
     pub async fn handle(mut self) -> Result<(), ConnectionError> {
@@ -97,6 +108,17 @@ impl Connection {
                 }
                 Resp::bulk_string("OK")
             }
+            Command::ConfigGet(item) => match item {
+                Dir if self.config.dir.is_some() => Resp::array(vec![
+                    Resp::bulk_string("dir"),
+                    Resp::BulkString(Cow::Owned(self.config.clone().dir.unwrap())),
+                ]),
+                DbFileName if self.config.dbfilename.is_some() => Resp::array(vec![
+                    Resp::bulk_string("dbfilename"),
+                    Resp::BulkString(Cow::Owned(self.config.clone().dbfilename.unwrap())),
+                ]),
+                _ => todo!(),
+            },
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

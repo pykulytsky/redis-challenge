@@ -22,7 +22,7 @@ use crate::{
     },
     config::Config,
     resp::{Resp, RespError},
-    Db,
+    Db, Expiries,
 };
 
 #[derive(Debug)]
@@ -30,6 +30,7 @@ pub struct Connection {
     pub tcp: TcpStream,
     pub addr: SocketAddr,
     db: Db,
+    expiries: Expiries,
     config: Config,
 }
 
@@ -46,11 +47,17 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub fn new((tcp, addr): (TcpStream, SocketAddr), db: Db, config: Config) -> Self {
+    pub fn new(
+        (tcp, addr): (TcpStream, SocketAddr),
+        db: Db,
+        expiries: Expiries,
+        config: Config,
+    ) -> Self {
         Self {
             tcp,
             addr,
             db,
+            expiries,
             config,
         }
     }
@@ -100,10 +107,16 @@ impl Connection {
                 if let Some(expiry) = expiry {
                     let expiry = *expiry;
                     let db = self.db.clone();
+                    self.expiries
+                        .write()
+                        .await
+                        .insert(key.clone().into_owned(), expiry);
                     let key = key.clone().into_owned();
+                    let expiries = self.expiries.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(Duration::from_millis(expiry as u64)).await;
                         db.write().await.remove(&key);
+                        expiries.write().await.remove(&key);
                     });
                 }
                 Resp::bulk_string("OK")
@@ -119,6 +132,30 @@ impl Connection {
                 ]),
                 _ => todo!(),
             },
+            Command::Keys(key) => {
+                let keys: Vec<Resp<'_>> = self
+                    .db
+                    .read()
+                    .await
+                    .keys()
+                    .filter(|_k| {
+                        let Some(key) = key.expect_bulk_string() else {
+                            return false;
+                        };
+
+                        if key == "*" {
+                            return true;
+                        } else {
+                            return false; // TODO filter by key
+                        }
+                    })
+                    .cloned()
+                    .collect();
+                Resp::Array(keys)
+            }
+            Command::Save => {
+                todo!()
+            }
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

@@ -3,6 +3,8 @@ use std::str::{self, from_utf8, Utf8Error};
 use std::{borrow::Cow, io::Write};
 use thiserror::Error;
 
+use crate::rdb::RdbString;
+
 pub const CTRLF: &[u8] = b"\r\n";
 
 #[derive(Eq, Hash, PartialEq)]
@@ -98,7 +100,10 @@ impl<'r> Resp<'r> {
                 assert!(rest.is_empty());
                 Ok(Self::Array(array))
             }
-            c => Err(UnsuportedType(c as char)),
+            c => {
+                let _ = dbg!(input.len());
+                Err(UnsuportedType(c as char))
+            }
         };
 
         let (_, mut rest) = input.split_at(input.iter().position(|b| b == &0xA).unwrap() + 1);
@@ -188,6 +193,20 @@ impl<'r> Resp<'r> {
             _ => None,
         }
     }
+
+    pub fn expect_bulk_string(&self) -> Option<&Cow<'_, str>> {
+        match self {
+            Resp::BulkString(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn expect_simple_string(&self) -> Option<&Cow<'_, str>> {
+        match self {
+            Resp::SimpleString(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 impl<'r> std::fmt::Debug for Resp<'r> {
@@ -221,5 +240,11 @@ where
             Resp::BulkString(cow) => Resp::SimpleString(cow.clone()),
             Resp::Array(vec) => Resp::Array(vec.clone()),
         }
+    }
+}
+
+impl<'input> From<RdbString> for Resp<'input> {
+    fn from(value: RdbString) -> Self {
+        Self::BulkString(Cow::Owned(value.0))
     }
 }

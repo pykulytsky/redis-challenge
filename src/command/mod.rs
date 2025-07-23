@@ -16,6 +16,8 @@ pub enum Command<'c> {
     Get(Resp<'c>),
     Set(Resp<'c>, Resp<'c>, Option<i64>),
     ConfigGet(ConfigItem),
+    Keys(Resp<'c>),
+    Save,
 }
 
 #[derive(Debug, Error)]
@@ -72,6 +74,17 @@ impl<'c> Command<'c> {
                         }
                         _ => todo!(),
                     },
+                    &"KEYS" => Ok(Self::Keys(
+                        array
+                            .get(1)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?,
+                    )),
+                    &"SAVE" => Ok(Self::Save),
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),

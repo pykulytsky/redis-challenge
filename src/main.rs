@@ -2,6 +2,7 @@
 use clap::Parser;
 use std::{
     collections::HashMap,
+    net::SocketAddrV4,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -57,9 +58,10 @@ async fn main() {
         }
     }
 
-    let listener = TcpListener::bind("127.0.0.1:6379")
+    let address = SocketAddrV4::new([127, 0, 0, 1].try_into().unwrap(), config.port);
+    let listener = TcpListener::bind(address)
         .await
-        .expect("Can not listen to port 6379");
+        .expect(&format!("Can not listen to port {}", config.port));
     loop {
         let db = db.clone();
         let expiries = expiries.clone();

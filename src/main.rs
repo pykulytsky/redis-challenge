@@ -22,10 +22,17 @@ async fn main() {
     let mut db: Db = Arc::new(RwLock::new(HashMap::new()));
     let mut expiries: Expiries = Arc::new(RwLock::new(HashMap::new()));
 
-    if let Ok(rdb) = Rdb::new(&config).await {
-        db = rdb.database;
-        expiries = rdb.expiries;
+    match Rdb::new(&config).await {
+        Ok(rdb) => {
+            db = rdb.database;
+            expiries = rdb.expiries;
+            dbg!(&db);
+        }
+        Err(err) => {
+            println!("Rdb error: {err}");
+        }
     }
+
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .expect("Can not listen to port 6379");

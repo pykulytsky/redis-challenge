@@ -52,7 +52,7 @@ pub enum RdbError {
     IOError(#[from] tokio::io::Error),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RdbString(pub String);
 
 impl RdbString {
@@ -190,27 +190,54 @@ impl Rdb {
         let mut db = HashMap::new();
         let mut expiries = HashMap::new();
 
-        fn decode_inner(
-            input: &[u8],
+        let (byte, mut rst) = input
+            .split_first()
+            .ok_or(RdbError::RdbDatabaseParserError)?;
+        assert_eq!(*byte, START_DB_SECTION);
+        let (byte, rst) = rst.split_first().ok_or(RdbError::RdbDatabaseParserError)?;
+        assert_eq!(*byte, 0);
+        let (byte, rst) = rst.split_first().ok_or(RdbError::RdbDatabaseParserError)?;
+        assert_eq!(*byte, DB_SIZE_FLAG);
+        let (db_size, rst) = rst.split_first().ok_or(RdbError::RdbDatabaseParserError)?;
+        let (expiry_size, mut rst) = rst.split_first().ok_or(RdbError::RdbDatabaseParserError)?;
+
+        fn decode_inner<'input>(
+            input: &'input [u8],
             db: &mut HashMap<Resp<'static>, Resp<'static>>,
             expiries: &mut HashMap<Resp<'static>, i64>,
-        ) -> Option<()> {
-            let (byte, mut rst) = input.split_first()?;
-            assert_eq!(*byte, START_DB_SECTION);
-            let (byte, rst) = rst.split_first()?;
-            assert_eq!(*byte, 0);
-            let (byte, rst) = rst.split_first()?;
-            assert_eq!(*byte, DB_SIZE_FLAG);
-            let (db_size, rst) = rst.split_first()?;
-            let (expiry_size, rst) = rst.split_first()?;
-            let (type_value, rst) = rst.split_first()?;
-            let (key, rest) = RdbString::parse(rst).ok()?;
-            let (value, rest) = RdbString::parse(rest).ok()?;
-            db.insert(key.into(), value.into());
-            Some(())
+        ) -> Option<&'input [u8]> {
+            let (type_value, mut rest) = input.split_first()?;
+            let mut expiry = None;
+            let mut pair_type = 0;
+            match type_value {
+                0xFC => {
+                    expiry = Some(u64::from_le_bytes(rest[..8].try_into().unwrap()) as i64);
+                    pair_type = rest[8];
+                    rest = &rest[9..];
+                }
+                0xFD => {
+                    expiry = Some(u32::from_le_bytes(rest[..4].try_into().unwrap()) as i64);
+                    pair_type = rest[4];
+                    rest = &rest[5..];
+                }
+                n => {
+                    // Otherwise this should be a type
+                    pair_type = *n;
+                }
+            }
+            let (key, rest) = RdbString::parse(rest).ok()?;
+            let (value, rest) = RdbString::parse(rest).ok()?; // TODO: parse value based on type
+            db.insert(key.clone().into(), value.into());
+            if let Some(expiry) = expiry {
+                expiries.insert(key.into(), expiry);
+            }
+            Some(rest)
         }
 
-        decode_inner(input, &mut db, &mut expiries).ok_or(RdbError::RdbDatabaseParserError)?;
+        for i in 0..*db_size {
+            rst = decode_inner(rst, &mut db, &mut expiries)
+                .ok_or(RdbError::RdbDatabaseParserError)?;
+        }
 
         Ok((Arc::new(RwLock::new(db)), Arc::new(RwLock::new(expiries))))
     }

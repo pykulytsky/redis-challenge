@@ -156,7 +156,15 @@ impl Connection {
             Command::Save => {
                 todo!()
             }
-            Command::Info(_parameter) => Resp::bulk_string("role:master\r\n"),
+            Command::Info(_parameter) => {
+                let is_replica = self.config.replicaof.is_some();
+                let role = if is_replica {
+                    "role:slave\r\n"
+                } else {
+                    "role:master\r\n"
+                };
+                Resp::bulk_string(role)
+            }
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

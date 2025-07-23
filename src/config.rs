@@ -10,4 +10,7 @@ pub struct Config {
 
     #[arg(short, long, default_value_t = 6379)]
     pub port: u16,
+
+    #[arg(short, long)]
+    pub replicaof: Option<String>,
 }

@@ -1,6 +1,10 @@
 #![allow(unused_imports)]
 use clap::Parser;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
@@ -26,10 +30,30 @@ async fn main() {
         Ok(rdb) => {
             db = rdb.database;
             expiries = rdb.expiries;
-            dbg!(&db);
         }
         Err(err) => {
             println!("Rdb error: {err}");
+        }
+    }
+
+    {
+        let expiries_map = expiries.read().await;
+        let entries = expiries_map.clone().into_iter();
+
+        for (key, expiry) in entries {
+            let expiries = expiries.clone();
+            let db = db.clone();
+            tokio::spawn(async move {
+                let expiring_at = SystemTime::UNIX_EPOCH + Duration::from_millis(expiry as u64);
+                let duration = expiring_at.duration_since(SystemTime::now());
+
+                if let Ok(duration) = duration {
+                    tokio::time::sleep(duration).await;
+                }
+
+                db.write().await.remove(&key);
+                expiries.write().await.remove(&key);
+            });
         }
     }
 

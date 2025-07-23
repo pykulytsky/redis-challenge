@@ -26,6 +26,7 @@ async fn main() {
         db = rdb.database;
         expiries = rdb.expiries;
     }
+    dbg!(&db);
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .expect("Can not listen to port 6379");

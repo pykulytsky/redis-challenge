@@ -245,6 +245,6 @@ where
 
 impl<'input> From<RdbString> for Resp<'input> {
     fn from(value: RdbString) -> Self {
-        Self::BulkString(Cow::Owned(value.0))
+        Self::SimpleString(Cow::Owned(value.0))
     }
 }

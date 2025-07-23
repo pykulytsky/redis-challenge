@@ -156,6 +156,7 @@ impl Connection {
             Command::Save => {
                 todo!()
             }
+            Command::Info(_parameter) => Resp::bulk_string("role:master\r\n"),
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

@@ -26,12 +26,13 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Connection {
+pub struct Connection<'s> {
     pub tcp: TcpStream,
     pub addr: SocketAddr,
     db: Db,
     expiries: Expiries,
     config: Config,
+    server_replication_id: &'s str,
 }
 
 #[derive(Debug, Error)]
@@ -46,12 +47,13 @@ pub enum ConnectionError {
     Command(#[from] CommandError),
 }
 
-impl Connection {
+impl<'s> Connection<'s> {
     pub fn new(
         (tcp, addr): (TcpStream, SocketAddr),
         db: Db,
         expiries: Expiries,
         config: Config,
+        server_replication_id: &'s str,
     ) -> Self {
         Self {
             tcp,
@@ -59,6 +61,7 @@ impl Connection {
             db,
             expiries,
             config,
+            server_replication_id,
         }
     }
 
@@ -163,7 +166,12 @@ impl Connection {
                 } else {
                     "role:master\r\n"
                 };
-                Resp::bulk_string(role)
+                let master_replid = format!("master_replid:{}\r\n", self.server_replication_id);
+                let master_repl_offset = "master_repl_offset:0\r\n";
+                Resp::BulkString(Cow::Owned(format!(
+                    "{}{}{}",
+                    role, master_replid, master_repl_offset
+                )))
             }
         };
         self.write_all(&resp.encode()).await?;
@@ -171,7 +179,7 @@ impl Connection {
     }
 }
 
-impl AsyncWrite for Connection {
+impl<'s> AsyncWrite for Connection<'s> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -195,7 +203,7 @@ impl AsyncWrite for Connection {
     }
 }
 
-impl AsyncRead for Connection {
+impl<'s> AsyncRead for Connection<'s> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

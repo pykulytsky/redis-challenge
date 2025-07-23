@@ -21,6 +21,8 @@ mod resp;
 pub type Db = Arc<RwLock<HashMap<Resp<'static>, Resp<'static>>>>;
 pub type Expiries = Arc<RwLock<HashMap<Resp<'static>, i64>>>;
 
+const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
+
 #[tokio::main]
 async fn main() {
     let config = config::Config::parse();
@@ -70,6 +72,7 @@ async fn main() {
             db,
             expiries,
             config.clone(),
+            REPLICATION_ID,
         );
         tokio::spawn(async move { connection.handle().await });
     }

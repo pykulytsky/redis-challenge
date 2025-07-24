@@ -3,6 +3,8 @@ use std::str::{self, from_utf8, Utf8Error};
 use std::{borrow::Cow, io::Write};
 use thiserror::Error;
 
+use crate::command::Command;
+use crate::config;
 use crate::rdb::RdbString;
 
 pub const CTRLF: &[u8] = b"\r\n";
@@ -246,5 +248,42 @@ where
 impl<'input> From<RdbString> for Resp<'input> {
     fn from(value: RdbString) -> Self {
         Self::SimpleString(Cow::Owned(value.0))
+    }
+}
+
+impl<'c> From<Command<'c>> for Resp<'c> {
+    fn from(command: Command<'c>) -> Self {
+        let mut array = vec![Resp::BulkString(Cow::Owned(command.name()))];
+        match command {
+            Command::Ping => {}
+            Command::Echo(msg) => {
+                array.push(Resp::BulkString(Cow::Owned(msg)));
+            }
+            Command::Get(key) => {
+                array.push(key);
+            }
+            Command::Set(key, value, expiry) => {
+                array.push(key);
+                array.push(value);
+                if let Some(exp) = expiry {
+                    array.push(Resp::bulk_string("EX"));
+                    array.push(Resp::Integer(exp))
+                }
+            }
+            Command::ConfigGet(config_item) => {
+                array.push(Resp::BulkString(Cow::Owned(format!("{:?}", config_item))))
+            }
+            Command::Keys(resp) => {
+                array.push(resp);
+            }
+            Command::Info(resp) => {
+                if let Some(info) = resp {
+                    array.push(info);
+                }
+            }
+            Command::Save => {}
+        }
+
+        Resp::Array(array)
     }
 }

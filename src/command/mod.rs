@@ -98,4 +98,17 @@ impl<'c> Command<'c> {
             _ => Err(IncorrectFormat),
         }
     }
+
+    pub fn name(&self) -> String {
+        match self {
+            Command::Ping => "PING".to_string(),
+            Command::Echo(_) => "ECHO".to_string(),
+            Command::Get(_) => "GET".to_string(),
+            Command::Set(_, _, _) => "SET".to_string(),
+            Command::ConfigGet(_) => "CONFIG".to_string(),
+            Command::Keys(_) => "KEYS".to_string(),
+            Command::Info(_) => "INFO".to_string(),
+            Command::Save => "SAVE".to_string(),
+        }
+    }
 }

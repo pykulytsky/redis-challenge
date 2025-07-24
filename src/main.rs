@@ -6,11 +6,11 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
-use crate::{connection::Connection, rdb::Rdb, resp::Resp};
+use crate::{command::Command, connection::Connection, rdb::Rdb, resp::Resp};
 
 mod command;
 mod config;
@@ -58,6 +58,20 @@ async fn main() {
                 expiries.write().await.remove(&key);
             });
         }
+    }
+
+    if let Some((addr, port)) = config.replicaof.clone().and_then(|addr| {
+        let (addr, port) = addr.split_once(" ")?;
+
+        Some((addr.to_string(), port.to_string()))
+    }) {
+        tokio::spawn(async move {
+            let mut client = TcpStream::connect(format!("{}:{}", addr, port))
+                .await
+                .unwrap();
+            let command: Resp<'_> = Command::Ping.into();
+            let _ = client.write_all(&command.encode()).await;
+        });
     }
 
     let address = SocketAddrV4::new([127, 0, 0, 1].try_into().unwrap(), config.port);

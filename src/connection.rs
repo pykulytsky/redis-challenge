@@ -73,14 +73,21 @@ impl<'s> Connection<'s> {
             if n == 0 {
                 break;
             }
-            match Command::parse(&buf[..n]) {
-                Ok(c) => {
-                    self.handle_command(c).await?;
-                }
-                Err(err) => {
-                    self.write_all(&Resp::SimpleError(Cow::Borrowed("unknown command")).encode())
+            let mut rest = buf.as_slice();
+            while !rest.is_empty() {
+                match Command::parse(rest) {
+                    Ok((c, new_rest)) => {
+                        self.handle_command(c).await?;
+                        rest = new_rest;
+                    }
+                    Err(err) => {
+                        self.write_all(
+                            &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
+                        )
                         .await?;
-                    eprintln!("{}", err);
+                        eprintln!("{}", err);
+                        break;
+                    }
                 }
             }
         }
@@ -173,6 +180,7 @@ impl<'s> Connection<'s> {
                     role, master_replid, master_repl_offset
                 )))
             }
+            Command::ReplConf(_, _) => Resp::bulk_string("OK"),
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

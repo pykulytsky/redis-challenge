@@ -99,7 +99,6 @@ impl<'r> Resp<'r> {
                     array.push(value);
                     rest = new_rest;
                 }
-                assert!(rest.is_empty());
                 Ok(Self::Array(array))
             }
             c => {
@@ -171,7 +170,6 @@ impl<'r> Resp<'r> {
 
     pub fn parse<'i: 'r>(input: &'i [u8]) -> Result<Self, RespError> {
         let (resp, rest) = Self::parse_inner(input)?;
-        assert!(rest.is_empty());
 
         Ok(resp)
     }
@@ -282,6 +280,10 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 }
             }
             Command::Save => {}
+            Command::ReplConf(key, value) => {
+                array.push(key);
+                array.push(value);
+            }
         }
 
         Resp::Array(array)

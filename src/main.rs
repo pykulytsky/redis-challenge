@@ -69,8 +69,17 @@ async fn main() {
             let mut client = TcpStream::connect(format!("{}:{}", addr, port))
                 .await
                 .unwrap();
-            let command: Resp<'_> = Command::Ping.into();
-            let _ = client.write_all(&command.encode()).await;
+            let ping: Resp<'_> = Command::Ping.into();
+            let _ = client.write_all(&ping.encode()).await;
+            let replconf_port: Resp<'_> = Command::ReplConf(
+                Resp::bulk_string("listening_port"),
+                Resp::Integer(config.port as i64),
+            )
+            .into();
+            let _ = client.write_all(&replconf_port.encode()).await;
+            let replconf_capa: Resp<'_> =
+                Command::ReplConf(Resp::bulk_string("capa"), Resp::bulk_string("psync2")).into();
+            let _ = client.write_all(&replconf_capa.encode()).await;
         });
     }
 

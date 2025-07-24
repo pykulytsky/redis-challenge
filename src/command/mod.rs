@@ -19,6 +19,7 @@ pub enum Command<'c> {
     Keys(Resp<'c>),
     Info(Option<Resp<'c>>),
     Save,
+    ReplConf(Resp<'c>, Resp<'c>),
 }
 
 #[derive(Debug, Error)]
@@ -34,11 +35,11 @@ pub enum CommandError {
 }
 
 impl<'c> Command<'c> {
-    pub fn parse(input: &'c [u8]) -> Result<Self, CommandError> {
+    pub fn parse(input: &'c [u8]) -> Result<(Self, &'c [u8]), CommandError> {
         use Command::*;
         use CommandError::*;
-        let packet = Resp::parse(input)?;
-        match packet {
+        let (packet, rest) = Resp::parse_inner(input)?;
+        let result = match packet {
             Resp::Array(array) => match array.first().ok_or(IncorrectFormat)? {
                 Resp::BulkString(Cow::Borrowed(c)) => match c {
                     &"PING" => Ok(Ping),
@@ -96,7 +97,9 @@ impl<'c> Command<'c> {
                 _ => Err(IncorrectFormat),
             },
             _ => Err(IncorrectFormat),
-        }
+        };
+
+        result.map(|ok| (ok, rest))
     }
 
     pub fn name(&self) -> String {
@@ -109,6 +112,7 @@ impl<'c> Command<'c> {
             Command::Keys(_) => "KEYS".to_string(),
             Command::Info(_) => "INFO".to_string(),
             Command::Save => "SAVE".to_string(),
+            Command::ReplConf(_, _) => "REPLCONF".to_string(),
         }
     }
 }

@@ -9,11 +9,11 @@ use std::{
     time::Duration,
 };
 use thiserror::Error;
-use tokio::io::AsyncWriteExt;
 use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::{
     command::{
@@ -187,11 +187,12 @@ impl<'s> Connection<'s> {
                     self.server_replication_id
                 )));
                 self.write_all(&fullresync.encode()).await?;
-                let empty_rdb = b"524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
                 let mut rdb = vec![];
-                rdb.extend_from_slice(format!("${}\r\n", empty_rdb.len()).as_bytes());
-                rdb.extend_from_slice(empty_rdb.as_slice());
-                self.write_all(&rdb).await?;
+                File::open("dump.rdb").await?.read_buf(&mut rdb).await?;
+                let mut resync = vec![];
+                resync.extend_from_slice(format!("${}\r\n", rdb.len()).as_bytes());
+                resync.extend_from_slice(rdb.as_slice());
+                self.write_all(&resync).await?;
                 return Ok(());
             }
         };

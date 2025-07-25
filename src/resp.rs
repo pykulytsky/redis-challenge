@@ -289,6 +289,10 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 array.push(key);
                 array.push(value);
             }
+            Command::Psync(master_replication_id, master_offset) => {
+                array.push(master_replication_id);
+                array.push(master_offset);
+            }
         }
 
         Resp::Array(array)

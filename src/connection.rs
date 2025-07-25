@@ -181,6 +181,9 @@ impl<'s> Connection<'s> {
                 )))
             }
             Command::ReplConf(_, _) => Resp::bulk_string("OK"),
+            Command::Psync(_master_replication_id, _master_offset) => {
+                Resp::simple_string("FULLRESYNC <REPL_ID> 0")
+            }
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

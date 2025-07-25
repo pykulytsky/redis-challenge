@@ -20,6 +20,7 @@ pub enum Command<'c> {
     Info(Option<Resp<'c>>),
     Save,
     ReplConf(Resp<'c>, Resp<'c>),
+    Psync(Resp<'c>, Resp<'c>),
 }
 
 #[derive(Debug, Error)]
@@ -41,7 +42,7 @@ impl<'c> Command<'c> {
         let (packet, rest) = Resp::parse_inner(input)?;
         let result = match packet {
             Resp::Array(array) => match array.first().ok_or(IncorrectFormat)? {
-                Resp::BulkString(Cow::Borrowed(c)) => match c {
+                Resp::BulkString(Cow::Borrowed(c)) => match &c.to_uppercase().as_str() {
                     &"PING" => Ok(Ping),
                     &"ECHO" => {
                         let arg = array.get(1).ok_or(IncorrectFormat)?;
@@ -131,6 +132,7 @@ impl<'c> Command<'c> {
             Command::Info(_) => "INFO".to_string(),
             Command::Save => "SAVE".to_string(),
             Command::ReplConf(_, _) => "REPLCONF".to_string(),
+            Command::Psync(_, _) => "PSYNC".to_string(),
         }
     }
 }

@@ -3,13 +3,13 @@ use std::borrow::Cow;
 use crate::resp::{Resp, RespError};
 use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConfigItem {
     Dir,
     DbFileName,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Command<'c> {
     Ping,
     Echo(String),
@@ -36,6 +36,32 @@ pub enum CommandError {
 }
 
 impl<'c> Command<'c> {
+    pub fn is_write_command(&self) -> bool {
+        match self {
+            Command::Set(_, _, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn into_owned(self) -> Command<'static> {
+        match self {
+            Command::Ping => Command::Ping,
+            Command::Echo(msg) => Command::Echo(msg),
+            Command::Get(resp) => Command::Get(resp.into_owned()),
+            Command::Set(resp, resp1, resp2) => {
+                Command::Set(resp.into_owned(), resp1.into_owned(), resp2)
+            }
+            Command::ConfigGet(config_item) => Command::ConfigGet(config_item),
+            Command::Keys(resp) => Command::Keys(resp.into_owned()),
+            Command::Info(resp) => Command::Info(resp.map(|resp| resp.into_owned())),
+            Command::Save => Command::Save,
+            Command::ReplConf(resp, resp1) => {
+                Command::ReplConf(resp.into_owned(), resp1.into_owned())
+            }
+            Command::Psync(resp, resp1) => Command::Psync(resp.into_owned(), resp1.into_owned()),
+        }
+    }
+
     pub fn parse(input: &'c [u8]) -> Result<(Self, &'c [u8]), CommandError> {
         use Command::*;
         use CommandError::*;

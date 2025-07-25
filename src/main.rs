@@ -3,7 +3,9 @@ use clap::Parser;
 use std::{
     borrow::Cow,
     collections::HashMap,
+    future::Future,
     net::SocketAddrV4,
+    process::Output,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -11,13 +13,21 @@ use tokio::sync::RwLock;
 use tokio::{io::AsyncReadExt, net::TcpListener};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
-use crate::{command::Command, connection::Connection, rdb::Rdb, resp::Resp};
+use crate::{
+    command::Command,
+    connection::{Connection, ConnectionError},
+    rdb::Rdb,
+    resp::Resp,
+    server::Server,
+};
 
 mod command;
 mod config;
 mod connection;
 mod rdb;
+mod replica;
 mod resp;
+mod server;
 
 pub type Db = Arc<RwLock<HashMap<Resp<'static>, Resp<'static>>>>;
 pub type Expiries = Arc<RwLock<HashMap<Resp<'static>, i64>>>;
@@ -26,89 +36,103 @@ const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
 
 #[tokio::main]
 async fn main() {
-    let config = config::Config::parse();
-    let mut db: Db = Arc::new(RwLock::new(HashMap::new()));
-    let mut expiries: Expiries = Arc::new(RwLock::new(HashMap::new()));
+    let mut server = Server::new();
+    server.initialize().await;
+    server.start().await;
+    // let config = Arc::new(config::Config::parse());
+    // let mut db: Db = Arc::new(RwLock::new(HashMap::new()));
+    // let mut expiries: Expiries = Arc::new(RwLock::new(HashMap::new()));
 
-    match Rdb::new(&config).await {
-        Ok(rdb) => {
-            db = rdb.database;
-            expiries = rdb.expiries;
-        }
-        Err(err) => {
-            println!("Rdb error: {err}");
-        }
-    }
+    // if config.dir.is_some() && config.dbfilename.is_some() {
+    //     match Rdb::new(&config).await {
+    //         Ok(rdb) => {
+    //             db = rdb.database;
+    //             expiries = rdb.expiries;
+    //         }
+    //         Err(err) => {
+    //             println!("Rdb error: {err}");
+    //         }
+    //     }
+    // }
 
-    {
-        let expiries_map = expiries.read().await;
-        let entries = expiries_map.clone().into_iter();
+    // {
+    //     let expiries_map = expiries.read().await;
+    //     let entries = expiries_map.clone().into_iter();
 
-        for (key, expiry) in entries {
-            let expiries = expiries.clone();
-            let db = db.clone();
-            tokio::spawn(async move {
-                let expiring_at = SystemTime::UNIX_EPOCH + Duration::from_millis(expiry as u64);
-                let duration = expiring_at.duration_since(SystemTime::now());
+    //     for (key, expiry) in entries {
+    //         let expiries = expiries.clone();
+    //         let db = db.clone();
+    //         tokio::spawn(async move {
+    //             let expiring_at = SystemTime::UNIX_EPOCH + Duration::from_millis(expiry as u64);
+    //             let duration = expiring_at.duration_since(SystemTime::now());
 
-                if let Ok(duration) = duration {
-                    tokio::time::sleep(duration).await;
-                }
+    //             if let Ok(duration) = duration {
+    //                 tokio::time::sleep(duration).await;
+    //             }
 
-                db.write().await.remove(&key);
-                expiries.write().await.remove(&key);
-            });
-        }
-    }
+    //             db.write().await.remove(&key);
+    //             expiries.write().await.remove(&key);
+    //         });
+    //     }
+    // }
 
-    if let Some((addr, port)) = config.replicaof.clone().and_then(|addr| {
-        let (addr, port) = addr.split_once(" ")?;
+    // if let Some((addr, port)) = config.replicaof.clone().and_then(|addr| {
+    //     let (addr, port) = addr.split_once(" ")?;
 
-        Some((addr.to_string(), port.to_string()))
-    }) {
-        tokio::spawn(async move {
-            let mut client = TcpStream::connect(format!("{}:{}", addr, port))
-                .await
-                .unwrap();
-            let ping: Resp<'_> = Command::Ping.into();
-            let _ = client.write_all(&ping.encode()).await;
-            let mut buf = vec![];
-            let _ = client.read_buf(&mut buf).await.unwrap();
-            let replconf_port: Resp<'_> = Command::ReplConf(
-                Resp::bulk_string("listening-port"),
-                Resp::BulkString(Cow::Owned(config.port.to_string())),
-            )
-            .into();
-            let _ = client.write_all(&replconf_port.encode()).await;
-            buf.clear();
-            let _ = client.read_buf(&mut buf).await.unwrap();
-            let replconf_capa: Resp<'_> =
-                Command::ReplConf(Resp::bulk_string("capa"), Resp::bulk_string("psync2")).into();
-            let _ = client.write_all(&replconf_capa.encode()).await;
-            buf.clear();
-            let _ = client.read_buf(&mut buf).await;
-            let psync: Resp<'_> =
-                Command::Psync(Resp::bulk_string("?"), Resp::bulk_string("-1")).into();
-            let _ = client.write_all(&psync.encode()).await;
-            buf.clear();
-            let _ = client.read_buf(&mut buf).await;
-        });
-    }
+    //     Some((addr.to_string(), port.to_string()))
+    // }) {
+    //     let config = config.clone();
+    //     tokio::spawn(async move {
+    //         let mut client = TcpStream::connect(format!("{}:{}", addr, port))
+    //             .await
+    //             .unwrap();
+    //         let ping: Resp<'_> = Command::Ping.into();
+    //         let _ = client.write_all(&ping.encode()).await;
+    //         let mut buf = vec![];
+    //         let _ = client.read_buf(&mut buf).await.unwrap();
+    //         let replconf_port: Resp<'_> = Command::ReplConf(
+    //             Resp::bulk_string("listening-port"),
+    //             Resp::BulkString(Cow::Owned(config.port.to_string())),
+    //         )
+    //         .into();
+    //         let _ = client.write_all(&replconf_port.encode()).await;
+    //         buf.clear();
+    //         let _ = client.read_buf(&mut buf).await.unwrap();
+    //         let replconf_capa: Resp<'_> =
+    //             Command::ReplConf(Resp::bulk_string("capa"), Resp::bulk_string("psync2")).into();
+    //         let _ = client.write_all(&replconf_capa.encode()).await;
+    //         buf.clear();
+    //         let _ = client.read_buf(&mut buf).await;
+    //         let psync: Resp<'_> =
+    //             Command::Psync(Resp::bulk_string("?"), Resp::bulk_string("-1")).into();
+    //         let _ = client.write_all(&psync.encode()).await;
+    //         buf.clear();
+    //         let _ = client.read_buf(&mut buf).await;
+    //     });
+    // }
 
-    let address = SocketAddrV4::new([127, 0, 0, 1].try_into().unwrap(), config.port);
-    let listener = TcpListener::bind(address)
-        .await
-        .expect(&format!("Can not listen to port {}", config.port));
-    loop {
-        let db = db.clone();
-        let expiries = expiries.clone();
-        let connection = Connection::new(
-            listener.accept().await.unwrap(),
-            db,
-            expiries,
-            config.clone(),
-            REPLICATION_ID,
-        );
-        tokio::spawn(async move { connection.handle().await });
-    }
+    // let address = SocketAddrV4::new([127, 0, 0, 1].try_into().unwrap(), config.port);
+    // let listener = TcpListener::bind(address)
+    //     .await
+    //     .expect(&format!("Can not listen to port {}", config.port));
+    // println!("Listening on port: {}", config.port);
+    // loop {
+    //     let db = db.clone();
+    //     let expiries = expiries.clone();
+    //     let mut connection = Connection::new(
+    //         listener.accept().await.unwrap(),
+    //         db,
+    //         expiries,
+    //         config.clone(),
+    //         REPLICATION_ID.to_string(),
+    //     );
+    //     tokio::spawn(async move {
+    //         connection.handle().await?;
+    //         if connection.is_promoted_to_replica {
+    //             println!("connection is promoted to replica");
+    //         }
+
+    //         Result::<(), ConnectionError>::Ok(())
+    //     });
+    // }
 }

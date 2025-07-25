@@ -106,10 +106,7 @@ impl<'r> Resp<'r> {
                 }
                 Ok(Self::Array(array))
             }
-            c => {
-                let _ = dbg!(input.len());
-                Err(UnsuportedType(c as char))
-            }
+            c => Err(UnsuportedType(c as char)),
         };
 
         let (_, mut rest) = input.split_at(input.iter().position(|b| b == &0xA).unwrap() + 1);
@@ -134,7 +131,7 @@ impl<'r> Resp<'r> {
         }
     }
 
-    pub fn encode(self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         let mut buf = vec![];
         match self {
             Resp::SimpleString(s) => {

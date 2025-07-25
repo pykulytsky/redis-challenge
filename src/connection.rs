@@ -13,6 +13,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
+use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::sync::RwLock;
 
 use crate::{
@@ -26,13 +27,15 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Connection<'s> {
+pub struct Connection {
     pub tcp: TcpStream,
     pub addr: SocketAddr,
     db: Db,
     expiries: Expiries,
-    config: Config,
-    server_replication_id: &'s str,
+    config: Arc<Config>,
+    server_replication_id: String,
+    pub is_promoted_to_replica: bool,
+    propagation_sender: BroadcastSender<Command<'static>>,
 }
 
 #[derive(Debug, Error)]
@@ -47,13 +50,14 @@ pub enum ConnectionError {
     Command(#[from] CommandError),
 }
 
-impl<'s> Connection<'s> {
+impl Connection {
     pub fn new(
         (tcp, addr): (TcpStream, SocketAddr),
         db: Db,
         expiries: Expiries,
-        config: Config,
-        server_replication_id: &'s str,
+        config: Arc<Config>,
+        server_replication_id: String,
+        propagation_sender: BroadcastSender<Command<'static>>,
     ) -> Self {
         Self {
             tcp,
@@ -62,13 +66,15 @@ impl<'s> Connection<'s> {
             expiries,
             config,
             server_replication_id,
+            is_promoted_to_replica: false,
+            propagation_sender,
         }
     }
 
-    pub async fn handle(mut self) -> Result<(), ConnectionError> {
+    pub async fn handle(&mut self) -> Result<(), ConnectionError> {
         println!("accepted new connection: {}", self.addr);
         let mut buf = [0; 512];
-        loop {
+        while !self.is_promoted_to_replica {
             let n = self.read(&mut buf).await?;
             if n == 0 {
                 break;
@@ -91,7 +97,11 @@ impl<'s> Connection<'s> {
                 }
             }
         }
-        self.tcp.shutdown().await.unwrap();
+
+        if !self.is_promoted_to_replica {
+            self.tcp.shutdown().await.unwrap();
+        }
+
         Ok(())
     }
 
@@ -134,11 +144,11 @@ impl<'s> Connection<'s> {
             Command::ConfigGet(item) => match item {
                 Dir if self.config.dir.is_some() => Resp::array(vec![
                     Resp::bulk_string("dir"),
-                    Resp::BulkString(Cow::Owned(self.config.clone().dir.unwrap())),
+                    Resp::BulkString(Cow::Owned(self.config.dir.clone().unwrap())),
                 ]),
                 DbFileName if self.config.dbfilename.is_some() => Resp::array(vec![
                     Resp::bulk_string("dbfilename"),
-                    Resp::BulkString(Cow::Owned(self.config.clone().dbfilename.unwrap())),
+                    Resp::BulkString(Cow::Owned(self.config.dbfilename.clone().unwrap())),
                 ]),
                 _ => todo!(),
             },
@@ -187,6 +197,7 @@ impl<'s> Connection<'s> {
                     self.server_replication_id
                 )));
                 self.write_all(&fullresync.encode()).await?;
+                // TODO: use include_bytes!
                 let empty_rdb: &[u8] = &[
                     0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, 0xfa, 0x09, 0x72, 0x65,
                     0x64, 0x69, 0x73, 0x2d, 0x76, 0x65, 0x72, 0x05, 0x37, 0x2e, 0x32, 0x2e, 0x30,
@@ -200,15 +211,21 @@ impl<'s> Connection<'s> {
                 rdb.extend_from_slice(format!("${}\r\n", empty_rdb.len()).as_bytes());
                 rdb.extend_from_slice(empty_rdb);
                 self.write_all(&rdb).await?;
+                self.is_promoted_to_replica = true;
                 return Ok(());
             }
         };
         self.write_all(&resp.encode()).await?;
+
+        if command.is_write_command() && !self.is_promoted_to_replica {
+            let _ = self.propagation_sender.send(command.into_owned());
+        }
+
         Ok(())
     }
 }
 
-impl<'s> AsyncWrite for Connection<'s> {
+impl AsyncWrite for Connection {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -232,7 +249,7 @@ impl<'s> AsyncWrite for Connection<'s> {
     }
 }
 
-impl<'s> AsyncRead for Connection<'s> {
+impl AsyncRead for Connection {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

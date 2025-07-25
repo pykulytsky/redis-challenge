@@ -76,7 +76,7 @@ async fn main() {
             let _ = client.read_buf(&mut buf).await.unwrap();
             let replconf_port: Resp<'_> = Command::ReplConf(
                 Resp::bulk_string("listening-port"),
-                Resp::BulkString(Cow::Owned(port)),
+                Resp::BulkString(Cow::Owned(config.port.to_string())),
             )
             .into();
             let _ = client.write_all(&replconf_port.encode()).await;

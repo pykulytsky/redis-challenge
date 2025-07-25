@@ -181,9 +181,19 @@ impl<'s> Connection<'s> {
                 )))
             }
             Command::ReplConf(_, _) => Resp::bulk_string("OK"),
-            Command::Psync(_master_replication_id, _master_offset) => Resp::SimpleString(
-                Cow::Owned(format!("FULLRESYNC {} 0", self.server_replication_id)),
-            ),
+            Command::Psync(_master_replication_id, _master_offset) => {
+                let fullresync = Resp::SimpleString(Cow::Owned(format!(
+                    "FULLRESYNC {} 0",
+                    self.server_replication_id
+                )));
+                self.write_all(&fullresync.encode()).await?;
+                let empty_rdb = b"524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+                let mut rdb = vec![];
+                rdb.extend_from_slice(format!("${}\r\n", empty_rdb.len()).as_bytes());
+                rdb.extend_from_slice(empty_rdb.as_slice());
+                self.write_all(&rdb).await?;
+                return Ok(());
+            }
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

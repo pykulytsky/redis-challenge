@@ -250,7 +250,7 @@ where
 
 impl<'input> From<RdbString> for Resp<'input> {
     fn from(value: RdbString) -> Self {
-        Self::SimpleString(Cow::Owned(value.0))
+        Self::BulkString(Cow::Owned(value.0))
     }
 }
 

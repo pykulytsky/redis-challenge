@@ -92,6 +92,24 @@ impl<'c> Command<'c> {
                             parameter.expect_bulk_string()?.clone().into_owned().into(),
                         ))
                     }))),
+                    &"REPLCONF" => Ok(Self::ReplConf(
+                        array
+                            .get(1)
+                            .and_then(|parameter| {
+                                Some(Resp::BulkString(
+                                    parameter.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .unwrap(),
+                        array
+                            .get(1)
+                            .and_then(|parameter| {
+                                Some(Resp::BulkString(
+                                    parameter.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .unwrap(),
+                    )),
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),

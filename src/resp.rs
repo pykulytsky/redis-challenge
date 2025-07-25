@@ -67,7 +67,12 @@ impl<'r> Resp<'r> {
                 input.get(1..len - 2).ok_or(NotEnoughtParts)?,
             )?))),
             b':' => Ok(Integer(
-                from_utf8(input.get(1..len - 2).ok_or(NotEnoughtParts)?)?.parse::<i64>()?,
+                from_utf8(
+                    input
+                        .get(1..input.iter().position(|b| *b == b'\r').unwrap())
+                        .ok_or(NotEnoughtParts)?,
+                )?
+                .parse::<i64>()?,
             )),
             b'$' => {
                 let mut parts = &mut input
@@ -237,7 +242,7 @@ where
             Resp::SimpleString(cow) => Resp::SimpleString(cow.clone()),
             Resp::SimpleError(cow) => Resp::SimpleString(cow.clone()),
             Resp::Integer(i) => Resp::Integer(*i),
-            Resp::BulkString(cow) => Resp::SimpleString(cow.clone()),
+            Resp::BulkString(cow) => Resp::BulkString(cow.clone()),
             Resp::Array(vec) => Resp::Array(vec.clone()),
         }
     }

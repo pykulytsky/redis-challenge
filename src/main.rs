@@ -6,8 +6,8 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tokio::{io::AsyncReadExt, net::TcpListener};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 use crate::{command::Command, connection::Connection, rdb::Rdb, resp::Resp};
@@ -71,15 +71,21 @@ async fn main() {
                 .unwrap();
             let ping: Resp<'_> = Command::Ping.into();
             let _ = client.write_all(&ping.encode()).await;
+            let mut buf = vec![];
+            let _ = client.read_buf(&mut buf).await.unwrap();
             let replconf_port: Resp<'_> = Command::ReplConf(
                 Resp::bulk_string("listening_port"),
                 Resp::Integer(config.port as i64),
             )
             .into();
             let _ = client.write_all(&replconf_port.encode()).await;
+            buf.clear();
+            let n = client.read_buf(&mut buf).await.unwrap();
             let replconf_capa: Resp<'_> =
                 Command::ReplConf(Resp::bulk_string("capa"), Resp::bulk_string("psync2")).into();
             let _ = client.write_all(&replconf_capa.encode()).await;
+            buf.clear();
+            let n = client.read_buf(&mut buf).await;
         });
     }
 

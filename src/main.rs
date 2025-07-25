@@ -87,6 +87,11 @@ async fn main() {
             let _ = client.write_all(&replconf_capa.encode()).await;
             buf.clear();
             let _ = client.read_buf(&mut buf).await;
+            let psync: Resp<'_> =
+                Command::Psync(Resp::bulk_string("?"), Resp::bulk_string("-1")).into();
+            let _ = client.write_all(&psync.encode()).await;
+            buf.clear();
+            let _ = client.read_buf(&mut buf).await;
         });
     }
 

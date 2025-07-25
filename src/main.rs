@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use clap::Parser;
 use std::{
+    borrow::Cow,
     collections::HashMap,
     net::SocketAddrV4,
     sync::Arc,
@@ -75,17 +76,17 @@ async fn main() {
             let _ = client.read_buf(&mut buf).await.unwrap();
             let replconf_port: Resp<'_> = Command::ReplConf(
                 Resp::bulk_string("listening-port"),
-                Resp::Integer(config.port as i64),
+                Resp::BulkString(Cow::Owned(config.port.to_string())),
             )
             .into();
             let _ = client.write_all(&replconf_port.encode()).await;
             buf.clear();
-            let n = client.read_buf(&mut buf).await.unwrap();
+            let _ = client.read_buf(&mut buf).await.unwrap();
             let replconf_capa: Resp<'_> =
                 Command::ReplConf(Resp::bulk_string("capa"), Resp::bulk_string("psync2")).into();
             let _ = client.write_all(&replconf_capa.encode()).await;
             buf.clear();
-            let n = client.read_buf(&mut buf).await;
+            let _ = client.read_buf(&mut buf).await;
         });
     }
 

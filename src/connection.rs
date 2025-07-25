@@ -181,9 +181,9 @@ impl<'s> Connection<'s> {
                 )))
             }
             Command::ReplConf(_, _) => Resp::bulk_string("OK"),
-            Command::Psync(_master_replication_id, _master_offset) => {
-                Resp::simple_string("FULLRESYNC <REPL_ID> 0")
-            }
+            Command::Psync(_master_replication_id, _master_offset) => Resp::SimpleString(
+                Cow::Owned(format!("FULLRESYNC {} 0", self.server_replication_id)),
+            ),
         };
         self.write_all(&resp.encode()).await?;
         Ok(())

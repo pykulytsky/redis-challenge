@@ -198,7 +198,7 @@ impl<'s> Connection<'s> {
                 ];
                 let mut rdb = vec![];
                 rdb.extend_from_slice(format!("${}\r\n", empty_rdb.len()).as_bytes());
-                rdb.extend_from_slice(empty_rdb.as_slice());
+                rdb.extend_from_slice(empty_rdb);
                 self.write_all(&rdb).await?;
                 return Ok(());
             }

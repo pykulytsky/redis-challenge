@@ -74,7 +74,7 @@ async fn main() {
             let mut buf = vec![];
             let _ = client.read_buf(&mut buf).await.unwrap();
             let replconf_port: Resp<'_> = Command::ReplConf(
-                Resp::bulk_string("listening_port"),
+                Resp::bulk_string("listening-port"),
                 Resp::Integer(config.port as i64),
             )
             .into();

@@ -73,9 +73,9 @@ impl Connection {
 
     pub async fn handle(&mut self) -> Result<(), ConnectionError> {
         println!("accepted new connection: {}", self.addr);
-        let mut buf = [0; 512];
+        let mut buf = Vec::with_capacity(4096);
         while !self.is_promoted_to_replica {
-            let n = self.read(&mut buf).await?;
+            let n = self.read_buf(&mut buf).await?;
             if n == 0 {
                 break;
             }
@@ -96,6 +96,7 @@ impl Connection {
                     }
                 }
             }
+            buf.clear();
         }
 
         if !self.is_promoted_to_replica {

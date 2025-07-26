@@ -60,9 +60,18 @@ impl<'r> Resp<'r> {
         use RespError::*;
         let len = input.len();
         let resp_value = match input[0] {
-            b'+' => Ok(SimpleString(Cow::Borrowed(from_utf8(
-                input.get(1..len - 2).ok_or(NotEnoughtParts)?,
-            )?))),
+            b'+' => {
+                if let Some(end) = input.iter().position(|b| *b == b'\r') {
+                    return Ok((
+                        SimpleString(Cow::Borrowed(from_utf8(
+                            input.get(1..end).ok_or(NotEnoughtParts)?,
+                        )?)),
+                        &input[end + 2..],
+                    ));
+                } else {
+                    Err(todo!())
+                }
+            }
             b'-' => Ok(SimpleError(Cow::Borrowed(from_utf8(
                 input.get(1..len - 2).ok_or(NotEnoughtParts)?,
             )?))),

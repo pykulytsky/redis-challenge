@@ -15,7 +15,8 @@ use tokio::{
 };
 
 use crate::{
-    command::Command, config::Config, connection::ConnectionError, resp::Resp, Db, Expiries,
+    command::Command, config::Config, connection::ConnectionError, rdb::Rdb, resp::Resp, Db,
+    Expiries,
 };
 
 #[derive(Debug)]
@@ -56,7 +57,7 @@ impl Replica {
             bytes_processed: 0,
         }
     }
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self) -> Result<(), ConnectionError> {
         let mut client = TcpStream::connect(self.addr).await.unwrap();
         let ping: Resp<'_> = Command::Ping.into();
         let _ = client.write_all(&ping.encode()).await;
@@ -79,9 +80,28 @@ impl Replica {
             Command::Psync(Resp::bulk_string("?"), Resp::bulk_string("-1")).into();
         let _ = client.write_all(&psync.encode()).await;
         buf.clear();
-        let _ = client.read_buf(&mut buf).await;
+        let n = client.read_buf(&mut buf).await?; // FULLRESYNC
+        let (_command, mut rest) = Resp::parse_inner(&buf[..n])?;
+        if rest.is_empty() {
+            buf.clear();
+            let n = client.read_buf(&mut buf).await?;
+            rest = &buf[..n];
+        }
+        assert!(rest[0] == b'$');
+        // TODO: rdb
+        // let length_end = &rest.iter().position(|b| *b == b'\r').unwrap();
+        // let rdb_length: usize = std::str::from_utf8(&rest[1..*length_end])
+        //     .unwrap()
+        //     .parse()
+        //     .unwrap();
+        // dbg!(Rdb::decode(
+        //     &rest[length_end + 2..length_end + 2 + rdb_length]
+        // ));
+        // rest = &rest[rdb_length + 4..];
 
         let _ = self.handle(client).await;
+
+        Ok(())
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
@@ -145,7 +165,6 @@ impl Replica {
             Command::ReplConf(key, _value) => match key {
                 Resp::BulkString(cow) => {
                     if cow.to_string().as_str() == "GETACK" {
-                        println!("Received getack");
                         let resp: Resp<'_> = Command::ReplConf(
                             Resp::bulk_string("ACK"),
                             Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),

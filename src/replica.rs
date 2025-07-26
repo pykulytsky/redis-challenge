@@ -119,9 +119,9 @@ impl Replica {
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
-                        let is_write_command = c.is_write_command();
+                        let should_account = c.should_account();
                         self.handle_command(c, &mut tcp).await?;
-                        if is_write_command {
+                        if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();
                         }
                         rest = new_rest;

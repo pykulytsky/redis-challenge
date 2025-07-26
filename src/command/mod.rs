@@ -40,6 +40,13 @@ impl<'c> Command<'c> {
     pub fn is_write_command(&self) -> bool {
         match self {
             Command::Set(_, _, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn should_account(&self) -> bool {
+        match self {
+            Command::Set(_, _, _) => true,
             Command::Ping => true,
             Command::ReplConf(_, _) => true,
             _ => false,

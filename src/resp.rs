@@ -97,7 +97,7 @@ impl<'r> Resp<'r> {
                 let string = from_utf8(parts.next().ok_or(NotEnoughtParts)?)?;
                 // assert_eq!(string.len(), length as usize);
                 if string.len() < length as usize
-                // || (6 + length as usize + length.ilog10() as usize) < input.len() - 1
+                    || (6 + length as usize + length.ilog10() as usize) > input.len()
                 {
                     return Err(RespError::NotEnoughtParts);
                 }

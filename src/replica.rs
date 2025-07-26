@@ -115,6 +115,7 @@ impl Replica {
                     break;
                 }
             }
+            let mut consumed = 0;
             let mut rest = buf.as_slice();
             while !rest.is_empty() {
                 match Command::parse(rest) {
@@ -129,6 +130,7 @@ impl Replica {
                             );
                             self.bytes_processed += rest.len() - new_rest.len();
                         }
+                        consumed += rest.len() - new_rest.len();
                         rest = new_rest;
                         failed = false;
                     }
@@ -143,7 +145,7 @@ impl Replica {
                     }
                 }
             }
-            buf.clear();
+            buf.drain(..consumed);
         }
 
         Ok(())

@@ -95,7 +95,7 @@ impl Replica {
             .unwrap()
             .parse()
             .unwrap();
-        rest = &rest[rdb_length + 4..];
+        rest = &rest[rdb_length + 5..];
         dbg!(String::from_utf8_lossy(rest));
 
         let _ = self.handle(client).await;

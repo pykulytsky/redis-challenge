@@ -107,7 +107,7 @@ impl Server {
             let expiries = self.expiries.clone();
             tokio::spawn(async move {
                 let mut replica = Replica::new(addr, port, db, expiries, config);
-                replica.start().await;
+                let _ = replica.start().await;
             });
         }
     }

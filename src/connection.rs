@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     pin::Pin,
-    sync::Arc,
+    sync::{atomic::AtomicUsize, Arc},
     task::{Context, Poll},
     time::Duration,
 };
@@ -36,6 +36,7 @@ pub struct Connection {
     server_replication_id: String,
     pub is_promoted_to_replica: bool,
     propagation_sender: BroadcastSender<Command<'static>>,
+    pub number_of_replicas: Arc<AtomicUsize>,
 }
 
 #[derive(Debug, Error)]
@@ -58,6 +59,7 @@ impl Connection {
         config: Arc<Config>,
         server_replication_id: String,
         propagation_sender: BroadcastSender<Command<'static>>,
+        number_of_replicas: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             tcp,
@@ -68,6 +70,7 @@ impl Connection {
             server_replication_id,
             is_promoted_to_replica: false,
             propagation_sender,
+            number_of_replicas,
         }
     }
 
@@ -228,7 +231,12 @@ impl Connection {
                 self.is_promoted_to_replica = true;
                 return Ok(());
             }
-            Command::Wait(_numofreplicas, _timeout) => Resp::Integer(0),
+            Command::Wait(_numofreplicas, _timeout) => {
+                let existing_replicas = self
+                    .number_of_replicas
+                    .load(std::sync::atomic::Ordering::Acquire);
+                Resp::Integer(existing_replicas as i64)
+            }
         };
         self.write_all(&resp.encode()).await?;
 

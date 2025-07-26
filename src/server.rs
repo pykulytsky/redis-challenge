@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::borrow::Cow;
 use std::net::SocketAddrV4;
+use std::sync::atomic::AtomicUsize;
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -29,6 +30,7 @@ pub struct Server {
     is_replica: bool,
     propagation_sender: BroadcastSender<Command<'static>>,
     propagation_receiver: BroadcastReceiver<Command<'static>>,
+    number_of_replicas: Arc<AtomicUsize>,
 }
 
 impl Server {
@@ -41,6 +43,7 @@ impl Server {
         let master_replication_id = REPLICATION_ID.to_string();
         let is_replica = config.replicaof.is_some();
         let (propagation_sender, propagation_receiver) = broadcast::channel(32);
+        let number_of_replicas = Arc::new(AtomicUsize::new(0));
         Self {
             config,
             address,
@@ -50,6 +53,7 @@ impl Server {
             is_replica,
             propagation_sender,
             propagation_receiver,
+            number_of_replicas,
         }
     }
 
@@ -121,6 +125,7 @@ impl Server {
             let db = self.db.clone();
             let expiries = self.expiries.clone();
             let propagation_sender = self.propagation_sender.clone();
+            let number_of_replicas = self.number_of_replicas.clone();
             let mut connection = Connection::new(
                 listener.accept().await.unwrap(),
                 db,
@@ -128,12 +133,16 @@ impl Server {
                 self.config.clone(),
                 self.master_replication_id.clone(),
                 propagation_sender,
+                number_of_replicas,
             );
             let mut propagation_receiver = self.propagation_receiver.resubscribe();
             tokio::spawn(async move {
                 connection.handle().await?;
                 if connection.is_promoted_to_replica {
                     println!("connection is promoted to replica");
+                    connection
+                        .number_of_replicas
+                        .fetch_add(1, std::sync::atomic::Ordering::Release);
                     tokio::spawn(async move {
                         while let Ok(command) = propagation_receiver.recv().await {
                             let resp: Resp<'_> = command.into();
@@ -144,6 +153,9 @@ impl Server {
                             );
                             let _ = connection.write_all(&resp.encode()).await;
                         }
+                        connection
+                            .number_of_replicas
+                            .fetch_sub(1, std::sync::atomic::Ordering::Release);
                     });
                 }
 

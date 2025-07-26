@@ -24,6 +24,7 @@ pub struct Replica {
     db: Db,
     expiries: Expiries,
     config: Arc<Config>,
+    bytes_processed: usize,
 }
 
 impl Replica {
@@ -52,6 +53,7 @@ impl Replica {
             db,
             expiries,
             config,
+            bytes_processed: 0,
         }
     }
     pub async fn start(&mut self) {
@@ -93,7 +95,8 @@ impl Replica {
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
-                        self.handle_command(c).await?;
+                        self.handle_command(c, &mut tcp).await?;
+                        self.bytes_processed += rest.len() - new_rest.len();
                         rest = new_rest;
                     }
                     Err(err) => {
@@ -114,6 +117,7 @@ impl Replica {
     pub async fn handle_command<'c>(
         &mut self,
         command: Command<'c>,
+        tcp: &mut TcpStream,
     ) -> Result<(), ConnectionError> {
         match &command {
             Command::Set(key, value, expiry) => {
@@ -135,6 +139,16 @@ impl Replica {
                         db.write().await.remove(&key);
                         expiries.write().await.remove(&key);
                     });
+                }
+            }
+            Command::ReplConf(key, _value) => {
+                if matches!(key, Resp::BulkString(Cow::Borrowed("ACK"))) {
+                    let resp: Resp<'_> = Command::ReplConf(
+                        Resp::bulk_string("ACK"),
+                        Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
+                    )
+                    .into();
+                    tcp.write_all(&resp.encode()).await?;
                 }
             }
             _ => {

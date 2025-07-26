@@ -95,6 +95,7 @@ impl Replica {
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
+                        dbg!(&c);
                         self.handle_command(c, &mut tcp).await?;
                         self.bytes_processed += rest.len() - new_rest.len();
                         rest = new_rest;

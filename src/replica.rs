@@ -142,17 +142,25 @@ impl Replica {
                 }
             }
             Command::ReplConf(key, _value) => {
-                let key = key.expect_bulk_string().map(|key| key.clone().into_owned());
-                if let Some(key) = key {
-                    if key.as_str() == "GETACK" {
-                        let resp: Resp<'_> = Command::ReplConf(
-                            Resp::bulk_string("ACK"),
-                            Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
-                        )
-                        .into();
-                        tcp.write_all(&resp.encode()).await?;
+                match key {
+                    Resp::BulkString(cow) => {
+                        dbg!(&cow.to_string());
+                    }
+                    n => {
+                        dbg!(&n);
                     }
                 }
+                // let key = key.expect_bulk_string().map(|key| key.clone().into_owned());
+                // if let Some(key) = key {
+                //     if key.as_str() == "GETACK" {
+                //         let resp: Resp<'_> = Command::ReplConf(
+                //             Resp::bulk_string("ACK"),
+                //             Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
+                //         )
+                //         .into();
+                //         tcp.write_all(&resp.encode()).await?;
+                //     }
+                // }
             }
             _ => {
                 return Ok(());

@@ -26,6 +26,7 @@ pub struct Replica {
     expiries: Expiries,
     config: Arc<Config>,
     bytes_processed: usize,
+    buffer: Vec<u8>,
 }
 
 impl Replica {
@@ -55,6 +56,7 @@ impl Replica {
             expiries,
             config,
             bytes_processed: 0,
+            buffer: Vec::with_capacity(4096),
         }
     }
     pub async fn start(&mut self) -> Result<(), ConnectionError> {
@@ -81,11 +83,10 @@ impl Replica {
         let _ = client.write_all(&psync.encode()).await;
         buf.clear();
         let n = client.read_buf(&mut buf).await?; // FULLRESYNC
-        dbg!(String::from_utf8_lossy(&buf[..n]));
         let (_command, mut rest) = Resp::parse_inner(&buf[..n])?;
         if rest.is_empty() {
             buf.clear();
-            let _n = client.read_buf(&mut buf).await?;
+            let n = client.read_buf(&mut buf).await?;
             rest = &buf[..n];
         }
         // TODO: rdb
@@ -95,8 +96,8 @@ impl Replica {
             .unwrap()
             .parse()
             .unwrap();
-        rest = &rest[rdb_length + 5..];
-        dbg!(String::from_utf8_lossy(rest));
+        rest = &rest[rdb_length + rdb_length.ilog10() as usize + 4..];
+        self.buffer.extend_from_slice(rest);
 
         let _ = self.handle(client).await;
 
@@ -104,7 +105,7 @@ impl Replica {
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
-        let mut buf = Vec::with_capacity(4096);
+        let mut buf = self.buffer.clone();
         loop {
             let n = tcp.read_buf(&mut buf).await?;
             if n == 0 {

@@ -81,14 +81,15 @@ impl Replica {
         let _ = client.write_all(&psync.encode()).await;
         buf.clear();
         let n = client.read_buf(&mut buf).await?; // FULLRESYNC
-        let (_command, mut rest) = Resp::parse_inner(&buf[..n])?;
+        dbg!(String::from_utf8_lossy(&buf[..n]));
+        let (_command, rest) = Resp::parse_inner(&buf[..n])?;
         if rest.is_empty() {
             buf.clear();
-            let n = client.read_buf(&mut buf).await?;
-            rest = &buf[..n];
+            let _n = client.read_buf(&mut buf).await?;
+            // rest = &buf[..n];
         }
-        assert!(rest[0] == b'$');
         // TODO: rdb
+        // assert!(rest[0] == b'$');
         // let length_end = &rest.iter().position(|b| *b == b'\r').unwrap();
         // let rdb_length: usize = std::str::from_utf8(&rest[1..*length_end])
         //     .unwrap()

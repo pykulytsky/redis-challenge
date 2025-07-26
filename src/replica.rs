@@ -145,6 +145,7 @@ impl Replica {
             Command::ReplConf(key, _value) => match key {
                 Resp::BulkString(cow) => {
                     if cow.to_string().as_str() == "GETACK" {
+                        println!("Received getack");
                         let resp: Resp<'_> = Command::ReplConf(
                             Resp::bulk_string("ACK"),
                             Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),

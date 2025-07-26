@@ -48,14 +48,7 @@ impl<'c> Command<'c> {
         match self {
             Command::Set(_, _, _) => true,
             Command::Ping => true,
-            Command::ReplConf(key, _) => {
-                if let Some(key) = key.expect_bulk_string() {
-                    if key.as_bytes() == b"GETACK" {
-                        return true;
-                    }
-                }
-                return false;
-            }
+            Command::ReplConf(_, _) => false,
             _ => false,
         }
     }

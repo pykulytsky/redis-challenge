@@ -98,7 +98,7 @@ impl Connection {
                                 failed = true;
                                 continue 'main;
                             }
-                            CommandError::ProtocolError(resp_error) => todo!(),
+                            CommandError::ProtocolError(_resp_error) => todo!(),
                             CommandError::UnsupportedCommand(_) => {
                                 self.write_all(
                                     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),

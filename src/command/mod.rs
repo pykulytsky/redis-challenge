@@ -48,7 +48,7 @@ impl<'c> Command<'c> {
         match self {
             Command::Set(_, _, _) => true,
             Command::Ping => true,
-            Command::ReplConf(_, _) => false,
+            Command::ReplConf(_, _) => true,
             _ => false,
         }
     }

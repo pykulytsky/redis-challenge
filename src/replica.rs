@@ -123,11 +123,6 @@ impl Replica {
                         let should_account = c.should_account();
                         self.handle_command(c, &mut tcp).await?;
                         if should_account {
-                            println!(
-                                "counting: {} + {}",
-                                self.bytes_processed,
-                                rest.len() - new_rest.len()
-                            );
                             self.bytes_processed += rest.len() - new_rest.len();
                         }
                         consumed += rest.len() - new_rest.len();

@@ -87,7 +87,7 @@ impl Replica {
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
         let mut buf = Vec::with_capacity(4096);
         loop {
-            let n = tcp.read(&mut buf).await?;
+            let n = tcp.read_buf(&mut buf).await?;
             if n == 0 {
                 break;
             }

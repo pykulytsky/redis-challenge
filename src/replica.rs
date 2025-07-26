@@ -142,7 +142,7 @@ impl Replica {
                 }
             }
             Command::ReplConf(key, _value) => {
-                if matches!(key, Resp::BulkString(Cow::Borrowed("ACK"))) {
+                if matches!(key, Resp::BulkString(Cow::Borrowed("GETACK"))) {
                     let resp: Resp<'_> = Command::ReplConf(
                         Resp::bulk_string("ACK"),
                         Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),

@@ -74,25 +74,39 @@ impl Connection {
     pub async fn handle(&mut self) -> Result<(), ConnectionError> {
         println!("accepted new connection: {}", self.addr);
         let mut buf = Vec::with_capacity(4096);
-        while !self.is_promoted_to_replica {
-            let n = self.read_buf(&mut buf).await?;
-            if n == 0 {
-                break;
+        let mut failed = false;
+        'main: while !self.is_promoted_to_replica {
+            if buf.is_empty() || failed {
+                let n = self.read_buf(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
             }
+
             let mut rest = buf.as_slice();
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
                         self.handle_command(c).await?;
                         rest = new_rest;
+                        failed = false;
                     }
                     Err(err) => {
-                        self.write_all(
-                            &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
-                        )
-                        .await?;
                         eprintln!("{}", err);
-                        break;
+                        match err {
+                            CommandError::IncorrectFormat => {
+                                failed = true;
+                                continue 'main;
+                            }
+                            CommandError::ProtocolError(resp_error) => todo!(),
+                            CommandError::UnsupportedCommand(_) => {
+                                self.write_all(
+                                    &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
+                                )
+                                .await?;
+                                break;
+                            }
+                        }
                     }
                 }
             }

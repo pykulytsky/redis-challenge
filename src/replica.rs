@@ -106,8 +106,10 @@ impl Replica {
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
         let mut buf = self.buffer.clone();
-        loop {
-            if buf.is_empty() {
+
+        let mut failed = false;
+        'main: loop {
+            if buf.is_empty() || failed {
                 let n = tcp.read_buf(&mut buf).await?;
                 if n == 0 {
                     break;
@@ -120,14 +122,16 @@ impl Replica {
                         self.handle_command(c, &mut tcp).await?;
                         self.bytes_processed += rest.len() - new_rest.len();
                         rest = new_rest;
+                        failed = false;
                     }
                     Err(err) => {
-                        tcp.write_all(
-                            &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
-                        )
-                        .await?;
+                        // tcp.write_all(
+                        //     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
+                        // )
+                        // .await?;
                         eprintln!("{}", err);
-                        break;
+                        failed = true;
+                        continue 'main;
                     }
                 }
             }

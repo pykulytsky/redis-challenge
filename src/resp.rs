@@ -95,12 +95,20 @@ impl<'r> Resp<'r> {
                     length = 0;
                 }
                 let string = from_utf8(parts.next().ok_or(NotEnoughtParts)?)?;
-                assert_eq!(string.len(), length as usize);
-                Ok(BulkString(Cow::Borrowed(string)))
+                // assert_eq!(string.len(), length as usize);
+                if string.len() < length as usize {
+                    return Err(RespError::NotEnoughtParts);
+                }
+                return Ok((
+                    BulkString(Cow::Borrowed(string)),
+                    &input[6 + length as usize + length.ilog10() as usize..],
+                ));
             }
             b'*' => {
-                let (length_string, mut rest) =
-                    input.split_at(input.iter().position(|b| b == &0xA).unwrap() + 1);
+                let Some(position) = input.iter().position(|b| b == &0xA) else {
+                    return Err(NotEnoughtParts);
+                };
+                let (length_string, mut rest) = input.split_at(position + 1);
                 let length = from_utf8(
                     length_string
                         .get(1..length_string.len() - 2)
@@ -113,7 +121,7 @@ impl<'r> Resp<'r> {
                     array.push(value);
                     rest = new_rest;
                 }
-                Ok(Self::Array(array))
+                return Ok((Self::Array(array), rest));
             }
             c => Err(UnsuportedType(c as char)),
         };

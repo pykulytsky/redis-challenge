@@ -145,6 +145,7 @@ impl Replica {
             Command::ReplConf(key, _value) => {
                 match key {
                     Resp::BulkString(cow) => {
+                        dbg!(&cow);
                         if cow.to_string().as_str() == "GETACK" {
                             println!("GETACK received");
                         }

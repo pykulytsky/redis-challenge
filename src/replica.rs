@@ -95,7 +95,6 @@ impl Replica {
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
-                        dbg!(&c);
                         self.handle_command(c, &mut tcp).await?;
                         self.bytes_processed += rest.len() - new_rest.len();
                         rest = new_rest;
@@ -142,30 +141,19 @@ impl Replica {
                     });
                 }
             }
-            Command::ReplConf(key, _value) => {
-                match key {
-                    Resp::BulkString(cow) => {
-                        dbg!(&cow);
-                        if cow.to_string().as_str() == "GETACK" {
-                            println!("GETACK received");
-                        }
-                    }
-                    n => {
-                        dbg!(&n);
+            Command::ReplConf(key, _value) => match key {
+                Resp::BulkString(cow) => {
+                    if cow.to_string().as_str() == "GETACK" {
+                        let resp: Resp<'_> = Command::ReplConf(
+                            Resp::bulk_string("ACK"),
+                            Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
+                        )
+                        .into();
+                        tcp.write_all(&resp.encode()).await?;
                     }
                 }
-                // let key = key.expect_bulk_string().map(|key| key.clone().into_owned());
-                // if let Some(key) = key {
-                //     if key.as_str() == "GETACK" {
-                //         let resp: Resp<'_> = Command::ReplConf(
-                //             Resp::bulk_string("ACK"),
-                //             Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
-                //         )
-                //         .into();
-                //         tcp.write_all(&resp.encode()).await?;
-                //     }
-                // }
-            }
+                _ => {}
+            },
             _ => {
                 return Ok(());
                 // As a replica we should not ever receive read commands

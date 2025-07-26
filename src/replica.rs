@@ -82,23 +82,21 @@ impl Replica {
         buf.clear();
         let n = client.read_buf(&mut buf).await?; // FULLRESYNC
         dbg!(String::from_utf8_lossy(&buf[..n]));
-        let (_command, rest) = Resp::parse_inner(&buf[..n])?;
+        let (_command, mut rest) = Resp::parse_inner(&buf[..n])?;
         if rest.is_empty() {
             buf.clear();
             let _n = client.read_buf(&mut buf).await?;
-            // rest = &buf[..n];
+            rest = &buf[..n];
         }
         // TODO: rdb
-        // assert!(rest[0] == b'$');
-        // let length_end = &rest.iter().position(|b| *b == b'\r').unwrap();
-        // let rdb_length: usize = std::str::from_utf8(&rest[1..*length_end])
-        //     .unwrap()
-        //     .parse()
-        //     .unwrap();
-        // dbg!(Rdb::decode(
-        //     &rest[length_end + 2..length_end + 2 + rdb_length]
-        // ));
-        // rest = &rest[rdb_length + 4..];
+        assert!(rest[0] == b'$');
+        let length_end = &rest.iter().position(|b| *b == b'\r').unwrap();
+        let rdb_length: usize = std::str::from_utf8(&rest[1..*length_end])
+            .unwrap()
+            .parse()
+            .unwrap();
+        rest = &rest[rdb_length + 4..];
+        dbg!(String::from_utf8_lossy(rest));
 
         let _ = self.handle(client).await;
 

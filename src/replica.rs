@@ -107,9 +107,11 @@ impl Replica {
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
         let mut buf = self.buffer.clone();
         loop {
-            let n = tcp.read_buf(&mut buf).await?;
-            if n == 0 {
-                break;
+            if buf.is_empty() {
+                let n = tcp.read_buf(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
             }
             let mut rest = buf.as_slice();
             while !rest.is_empty() {

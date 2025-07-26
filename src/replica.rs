@@ -121,6 +121,9 @@ impl Replica {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
                         let should_account = c.should_account();
+                        if should_account {
+                            println!("counting {:?}", &c);
+                        }
                         self.handle_command(c, &mut tcp).await?;
                         if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();

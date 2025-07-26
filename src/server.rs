@@ -134,6 +134,11 @@ impl Server {
                 connection.handle().await?;
                 if connection.is_promoted_to_replica {
                     println!("connection is promoted to replica");
+                    let getack: Resp<'_> =
+                        Command::ReplConf(Resp::bulk_string("GETACK"), Resp::bulk_string("*"))
+                            .into();
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let n = connection.write_all(&getack.encode()).await;
                     tokio::spawn(async move {
                         while let Ok(command) = propagation_receiver.recv().await {
                             let resp: Resp<'_> = command.into();

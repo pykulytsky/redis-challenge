@@ -21,6 +21,7 @@ pub enum Command<'c> {
     Save,
     ReplConf(Resp<'c>, Resp<'c>),
     Psync(Resp<'c>, Resp<'c>),
+    Wait(Resp<'c>, Resp<'c>),
 }
 
 #[derive(Debug, Error)]
@@ -59,6 +60,7 @@ impl<'c> Command<'c> {
                 Command::ReplConf(resp.into_owned(), resp1.into_owned())
             }
             Command::Psync(resp, resp1) => Command::Psync(resp.into_owned(), resp1.into_owned()),
+            Command::Wait(resp, resp1) => Command::Wait(resp.into_owned(), resp1.into_owned()),
         }
     }
 
@@ -155,6 +157,24 @@ impl<'c> Command<'c> {
                             })
                             .unwrap(),
                     )),
+                    &"WAIT" => Ok(Self::Wait(
+                        array
+                            .get(1)
+                            .and_then(|parameter| {
+                                Some(Resp::BulkString(
+                                    parameter.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .unwrap(),
+                        array
+                            .get(1)
+                            .and_then(|parameter| {
+                                Some(Resp::BulkString(
+                                    parameter.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .unwrap(),
+                    )),
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),
@@ -177,6 +197,7 @@ impl<'c> Command<'c> {
             Command::Save => "SAVE".to_string(),
             Command::ReplConf(_, _) => "REPLCONF".to_string(),
             Command::Psync(_, _) => "PSYNC".to_string(),
+            Command::Wait(_, _) => "WAIT".to_string(),
         }
     }
 }

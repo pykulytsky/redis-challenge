@@ -229,6 +229,7 @@ impl Connection {
                 self.is_promoted_to_replica = true;
                 return Ok(());
             }
+            Command::Wait(_numofreplicas, _timeout) => Resp::Integer(0),
         };
         self.write_all(&resp.encode()).await?;
 

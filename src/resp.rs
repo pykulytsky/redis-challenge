@@ -307,6 +307,10 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 array.push(master_replication_id);
                 array.push(master_offset);
             }
+            Command::Wait(numofreplicas, timeout) => {
+                array.push(numofreplicas);
+                array.push(timeout);
+            }
         }
 
         Resp::Array(array)

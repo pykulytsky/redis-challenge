@@ -94,11 +94,10 @@ impl Connection {
                     Err(err) => {
                         eprintln!("{}", err);
                         match err {
-                            CommandError::IncorrectFormat => {
+                            CommandError::IncorrectFormat | CommandError::ProtocolError(_) => {
                                 failed = true;
                                 continue 'main;
                             }
-                            CommandError::ProtocolError(_resp_error) => todo!(),
                             CommandError::UnsupportedCommand(_) => {
                                 self.write_all(
                                     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),

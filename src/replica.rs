@@ -128,12 +128,6 @@ impl Replica {
                             &c, command_bytes, should_account, is_write_command, self.bytes_processed
                         );
 
-                        // Update byte count first for all commands that should be accounted
-                        if should_account {
-                            self.bytes_processed += command_bytes;
-                            println!("Updated bytes_processed to: {}", self.bytes_processed);
-                        }
-
                         // Handle GETACK immediately after updating byte count
                         if let Command::ReplConf(key, _) = &c {
                             if let crate::resp::Resp::BulkString(cow) = key {
@@ -152,6 +146,12 @@ impl Replica {
                                     continue;
                                 }
                             }
+                        }
+
+                        // Update byte count first for all commands that should be accounted
+                        if should_account {
+                            self.bytes_processed += command_bytes;
+                            println!("Updated bytes_processed to: {}", self.bytes_processed);
                         }
 
                         self.handle_command(c, &mut tcp).await?;

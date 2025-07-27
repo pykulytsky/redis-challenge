@@ -238,6 +238,21 @@ impl Connection {
                 return Ok(());
             }
             Command::Wait(numofreplicas, timeout) => {
+                let numofreplicas = numofreplicas.expect_integer().unwrap();
+
+                if self
+                    .server_replication_offset
+                    .load(std::sync::atomic::Ordering::Acquire)
+                    == 0
+                {
+                    let resp = Resp::Integer(
+                        self.number_of_replicas
+                            .load(std::sync::atomic::Ordering::Acquire)
+                            as i64,
+                    );
+                    self.write_all(&resp.encode()).await?;
+                    return Ok(());
+                }
                 let mut syncronized_replicas = self
                     .replica_offsets
                     .read()
@@ -250,8 +265,6 @@ impl Connection {
                                 .load(std::sync::atomic::Ordering::Acquire)
                     })
                     .count();
-
-                let numofreplicas = numofreplicas.expect_integer().unwrap();
 
                 dbg!(syncronized_replicas, numofreplicas);
                 // Ask for offset from replicas if there is not enough replicas with up to date offset

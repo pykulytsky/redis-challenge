@@ -152,7 +152,7 @@ impl Replica {
                     }
                 }
             }
-            buf.clear();
+            buf.drain(..consumed);
         }
 
         Ok(())

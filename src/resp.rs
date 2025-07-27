@@ -7,6 +7,16 @@ use crate::command::Command;
 use crate::config;
 use crate::rdb::RdbString;
 
+pub fn num_digits(mut n: i64) -> usize {
+    if n == 0 {
+        return 1;
+    }
+    if n < 0 {
+        n = -n;
+    }
+    (n.ilog10() + 1) as usize
+}
+
 pub const CTRLF: &[u8] = b"\r\n";
 
 #[derive(Eq, Hash, PartialEq)]
@@ -142,11 +152,15 @@ impl<'r> Resp<'r> {
 
     pub fn len(&self) -> usize {
         match self {
-            Resp::SimpleString(s) => s.len(),
-            Resp::SimpleError(e) => e.len(),
-            Resp::Integer(i) => i.checked_ilog10().unwrap_or(0) as usize + 1,
-            Resp::BulkString(s) => s.len(),
-            Resp::Array(vec) => vec.iter().map(|i| i.len()).sum(),
+            Resp::SimpleString(s) => s.len() + CTRLF.len() + 1,
+            Resp::SimpleError(e) => e.len() + CTRLF.len() + 1,
+            Resp::Integer(i) => num_digits(*i) + if *i < 0 { 1 } else { 0 },
+            Resp::BulkString(s) => num_digits(s.len() as i64) + (CTRLF.len() * 2) + s.len(),
+            Resp::Array(vec) => {
+                1 + num_digits(vec.len() as i64)
+                    + CTRLF.len()
+                    + vec.iter().map(|i| i.len()).sum::<usize>()
+            }
         }
     }
 
@@ -313,6 +327,7 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 array.push(numofreplicas);
                 array.push(timeout);
             }
+            Command::Select(index) => array.push(index),
         }
 
         Resp::Array(array)

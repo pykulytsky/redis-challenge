@@ -37,6 +37,8 @@ pub struct Connection {
     pub is_promoted_to_replica: bool,
     propagation_sender: BroadcastSender<Command<'static>>,
     pub number_of_replicas: Arc<AtomicUsize>,
+    pub replica_offsets: Arc<RwLock<HashMap<SocketAddr, usize>>>,
+    pub server_replication_offset: Arc<AtomicUsize>,
 }
 
 #[derive(Debug, Error)]
@@ -60,6 +62,8 @@ impl Connection {
         server_replication_id: String,
         propagation_sender: BroadcastSender<Command<'static>>,
         number_of_replicas: Arc<AtomicUsize>,
+        replica_offsets: Arc<RwLock<HashMap<SocketAddr, usize>>>,
+        server_replication_offset: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             tcp,
@@ -71,6 +75,8 @@ impl Connection {
             is_promoted_to_replica: false,
             propagation_sender,
             number_of_replicas,
+            replica_offsets,
+            server_replication_offset,
         }
     }
 
@@ -231,16 +237,61 @@ impl Connection {
                 self.is_promoted_to_replica = true;
                 return Ok(());
             }
-            Command::Wait(_numofreplicas, _timeout) => {
-                let existing_replicas = self
-                    .number_of_replicas
-                    .load(std::sync::atomic::Ordering::Acquire);
-                Resp::Integer(existing_replicas as i64)
+            Command::Wait(numofreplicas, timeout) => {
+                let _ = self.propagation_sender.send(Command::ReplConf(
+                    Resp::bulk_string("GETACK"),
+                    Resp::bulk_string("*"),
+                ));
+                let mut syncronized_replicas = self
+                    .replica_offsets
+                    .read()
+                    .await
+                    .iter()
+                    .filter(|(_, offset)| {
+                        **offset
+                            >= self
+                                .server_replication_offset
+                                .load(std::sync::atomic::Ordering::Acquire)
+                    })
+                    .count();
+                let numofreplicas = numofreplicas.expect_integer().unwrap();
+                if syncronized_replicas < numofreplicas as usize {
+                    let timeout = timeout.expect_integer().unwrap();
+                    let replica_offsets = self.replica_offsets.clone();
+                    let _ = tokio::time::timeout(Duration::from_millis(timeout as u64), async {
+                        loop {
+                            syncronized_replicas = replica_offsets
+                                .read()
+                                .await
+                                .iter()
+                                .filter(|(_, offset)| {
+                                    **offset
+                                        >= self
+                                            .server_replication_offset
+                                            .load(std::sync::atomic::Ordering::Acquire)
+                                })
+                                .count();
+                            if syncronized_replicas >= numofreplicas as usize {
+                                break;
+                            }
+                        }
+                    })
+                    .await;
+                }
+                Resp::Integer(syncronized_replicas as i64)
             }
+            Command::Select(_) => return Ok(()),
         };
         self.write_all(&resp.encode()).await?;
 
+        if command.should_account() && !self.is_promoted_to_replica {
+            let resp: Resp<'_> = command.clone().into();
+            self.server_replication_offset
+                .fetch_add(resp.len(), std::sync::atomic::Ordering::Release);
+        }
+
         if command.is_write_command() && !self.is_promoted_to_replica {
+            // TODO: this is not optimal
             let _ = self.propagation_sender.send(command.into_owned());
         }
 

@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::borrow::Cow;
-use std::net::SocketAddrV4;
+use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::atomic::AtomicUsize;
 use std::{
     collections::HashMap,
@@ -12,6 +12,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast::{self, Receiver as BroadcastReceiver, Sender as BroadcastSender};
 use tokio::{net::TcpStream, sync::RwLock};
 
+use crate::command::CommandError;
 use crate::connection::ConnectionError;
 use crate::replica::Replica;
 use crate::REPLICATION_ID;
@@ -31,6 +32,8 @@ pub struct Server {
     propagation_sender: BroadcastSender<Command<'static>>,
     propagation_receiver: BroadcastReceiver<Command<'static>>,
     number_of_replicas: Arc<AtomicUsize>,
+    replica_offsets: Arc<RwLock<HashMap<SocketAddr, usize>>>,
+    replication_offset: Arc<AtomicUsize>,
 }
 
 impl Server {
@@ -44,6 +47,8 @@ impl Server {
         let is_replica = config.replicaof.is_some();
         let (propagation_sender, propagation_receiver) = broadcast::channel(32);
         let number_of_replicas = Arc::new(AtomicUsize::new(0));
+        let replica_offsets = Arc::new(RwLock::new(HashMap::new()));
+        let replication_offset = Arc::new(AtomicUsize::new(0));
         Self {
             config,
             address,
@@ -54,6 +59,8 @@ impl Server {
             propagation_sender,
             propagation_receiver,
             number_of_replicas,
+            replica_offsets,
+            replication_offset,
         }
     }
 
@@ -126,6 +133,8 @@ impl Server {
             let expiries = self.expiries.clone();
             let propagation_sender = self.propagation_sender.clone();
             let number_of_replicas = self.number_of_replicas.clone();
+            let replica_offsets = self.replica_offsets.clone();
+            let server_replication_offset = self.replication_offset.clone();
             let mut connection = Connection::new(
                 listener.accept().await.unwrap(),
                 db,
@@ -134,6 +143,8 @@ impl Server {
                 self.master_replication_id.clone(),
                 propagation_sender,
                 number_of_replicas,
+                replica_offsets,
+                server_replication_offset,
             );
             let mut propagation_receiver = self.propagation_receiver.resubscribe();
             tokio::spawn(async move {
@@ -144,14 +155,25 @@ impl Server {
                         .number_of_replicas
                         .fetch_add(1, std::sync::atomic::Ordering::Release);
                     tokio::spawn(async move {
-                        while let Ok(command) = propagation_receiver.recv().await {
-                            let resp: Resp<'_> = command.into();
-                            println!(
-                                "Propagating command {:?} to replica {}",
-                                &resp,
-                                &connection.addr.port()
-                            );
-                            let _ = connection.write_all(&resp.encode()).await;
+                        let mut buf = Vec::with_capacity(4096);
+                        let mut read_failed = false;
+                        loop {
+                            tokio::select! {
+                                Ok(command) = propagation_receiver.recv() => {
+                                    let resp: Resp<'_> = command.into();
+                                    println!(
+                                        "Propagating command {:?} to replica {}",
+                                        &resp,
+                                        &connection.addr.port()
+                                    );
+                                    let _ = connection.write_all(&resp.encode()).await;
+                                },
+                                Ok(n) = handle_replica_connection(&mut connection, &mut buf, &mut read_failed) => {
+                                    if n == 0 {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         connection
                             .number_of_replicas
@@ -163,4 +185,63 @@ impl Server {
             });
         }
     }
+}
+
+pub async fn handle_replica_connection<'c>(
+    connection: &mut Connection,
+    buf: &mut Vec<u8>,
+    failed: &mut bool,
+) -> Result<usize, ConnectionError> {
+    if buf.is_empty() || *failed {
+        let n = connection.read_buf(buf).await?;
+        if n == 0 {
+            return Ok(0);
+        }
+    }
+    let mut consumed = 0;
+    let mut rest = buf.as_slice();
+    while !rest.is_empty() {
+        match Command::parse(rest) {
+            Ok((c, new_rest)) => {
+                handle_command_from_replica(c, connection).await?;
+                consumed += rest.len() - new_rest.len();
+                rest = new_rest;
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+                *failed = true;
+                break;
+            }
+        }
+    }
+    buf.drain(..consumed);
+
+    Ok(consumed)
+}
+
+pub async fn handle_command_from_replica<'c>(
+    command: Command<'c>,
+    connection: &Connection,
+) -> Result<(), ConnectionError> {
+    match &command {
+        Command::ReplConf(key, value) => {
+            if let Some(key) = key.expect_bulk_string() {
+                if key.to_string().as_bytes() == b"ACK" {
+                    if let Some(value) = value.expect_bulk_string() {
+                        if let Ok(offset) = value.parse::<usize>() {
+                            println!("Replica {} sent offset {}", connection.addr.port(), offset);
+                            connection
+                                .replica_offsets
+                                .write()
+                                .await
+                                .insert(connection.addr.clone(), offset);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }

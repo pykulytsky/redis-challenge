@@ -127,11 +127,34 @@ impl Replica {
                             "Command: {:?}, bytes: {}, should_account: {}, is_write: {}, total_before: {}",
                             &c, command_bytes, should_account, is_write_command, self.bytes_processed
                         );
-                        self.handle_command(c, &mut tcp).await?;
+
+                        // Update byte count first for all commands that should be accounted
                         if should_account {
                             self.bytes_processed += command_bytes;
                             println!("Updated bytes_processed to: {}", self.bytes_processed);
                         }
+
+                        // Handle GETACK immediately after updating byte count
+                        if let Command::ReplConf(key, _) = &c {
+                            if let crate::resp::Resp::BulkString(cow) = key {
+                                if cow.as_ref() == "GETACK" {
+                                    let ack: Resp<'_> = Command::ReplConf(
+                                        Resp::bulk_string("ACK"),
+                                        Resp::BulkString(Cow::Owned(
+                                            self.bytes_processed.to_string(),
+                                        )),
+                                    )
+                                    .into();
+                                    let _ = tcp.write_all(&ack.encode()).await;
+                                    consumed += command_bytes;
+                                    rest = new_rest;
+                                    failed = false;
+                                    continue;
+                                }
+                            }
+                        }
+
+                        self.handle_command(c, &mut tcp).await?;
                         if is_write_command {
                             let ack: Resp<'_> = Command::ReplConf(
                                 Resp::bulk_string("ACK"),
@@ -191,13 +214,9 @@ impl Replica {
             }
             Command::ReplConf(key, _value) => match key {
                 Resp::BulkString(cow) => {
-                    if cow.to_string().as_str() == "GETACK" {
-                        let resp: Resp<'_> = Command::ReplConf(
-                            Resp::bulk_string("ACK"),
-                            Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
-                        )
-                        .into();
-                        tcp.write_all(&resp.encode()).await?;
+                    // GETACK is now handled in the main loop
+                    if cow.to_string().as_str() != "GETACK" {
+                        // Handle other REPLCONF commands if needed
                     }
                 }
                 _ => {}

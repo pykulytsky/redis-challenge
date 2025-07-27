@@ -105,7 +105,7 @@ impl Replica {
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
-        let mut buf = self.buffer.clone();
+        let mut buf = std::mem::take(&mut self.buffer);
 
         let mut failed = false;
         'main: loop {
@@ -122,18 +122,15 @@ impl Replica {
                     Ok((c, new_rest)) => {
                         let should_account = c.should_account();
                         let is_write_command = c.is_write_command();
-                        if should_account {
-                            println!(
-                                "processed {} bytes of {:?}, rest was: {}, new rest: {}",
-                                rest.len() - new_rest.len(),
-                                &c,
-                                rest.len(),
-                                new_rest.len()
-                            );
-                        }
+                        let command_bytes = rest.len() - new_rest.len();
+                        println!(
+                            "Command: {:?}, bytes: {}, should_account: {}, is_write: {}, total_before: {}",
+                            &c, command_bytes, should_account, is_write_command, self.bytes_processed
+                        );
                         self.handle_command(c, &mut tcp).await?;
                         if should_account {
-                            self.bytes_processed += rest.len() - new_rest.len();
+                            self.bytes_processed += command_bytes;
+                            println!("Updated bytes_processed to: {}", self.bytes_processed);
                         }
                         if is_write_command {
                             let ack: Resp<'_> = Command::ReplConf(
@@ -143,7 +140,7 @@ impl Replica {
                             .into();
                             let _ = tcp.write_all(&ack.encode()).await;
                         }
-                        consumed += rest.len() - new_rest.len();
+                        consumed += command_bytes;
                         rest = new_rest;
                         failed = false;
                     }
@@ -154,8 +151,12 @@ impl Replica {
                     }
                 }
             }
-            let drained = buf.drain(..consumed);
-            dbg!(drained.count());
+            buf.drain(..consumed);
+            println!(
+                "Drained {} bytes from buffer, buffer remaining: {}",
+                consumed,
+                buf.len()
+            );
         }
 
         Ok(())

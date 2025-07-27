@@ -122,6 +122,13 @@ impl Replica {
                     Ok((c, new_rest)) => {
                         let should_account = c.should_account();
                         let is_write_command = c.is_write_command();
+                        if should_account {
+                            println!(
+                                "processed {} bytes of {:?}",
+                                rest.len() - new_rest.len(),
+                                &c
+                            );
+                        }
                         self.handle_command(c, &mut tcp).await?;
                         if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();

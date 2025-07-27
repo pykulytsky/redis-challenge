@@ -108,7 +108,6 @@ impl Replica {
         let mut buf = self.buffer.clone();
 
         let mut failed = false;
-        let mut consumed = 0;
         'main: loop {
             if buf.is_empty() || failed {
                 let n = tcp.read_buf(&mut buf).await?;
@@ -117,6 +116,7 @@ impl Replica {
                 }
             }
             let mut rest = buf.as_slice();
+            let mut consumed = 0;
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {

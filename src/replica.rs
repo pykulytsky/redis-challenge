@@ -129,7 +129,7 @@ impl Replica {
                                 &c
                             );
                         }
-                        self.handle_command(c, &mut tcp).await?;
+                        dbg!(self.handle_command(c, &mut tcp).await);
                         if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();
                         }

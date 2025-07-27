@@ -89,14 +89,6 @@ impl Replica {
             let n = client.read_buf(&mut buf).await?;
             rest = &buf[..n];
         }
-        // TODO: rdb
-        assert!(rest[0] == b'$');
-        let length_end = &rest.iter().position(|b| *b == b'\r').unwrap();
-        let rdb_length: usize = std::str::from_utf8(&rest[1..*length_end])
-            .unwrap()
-            .parse()
-            .unwrap();
-        rest = &rest[rdb_length + rdb_length.ilog10() as usize + 4..];
         self.buffer.extend_from_slice(rest);
 
         let _ = self.handle(client).await;
@@ -105,35 +97,33 @@ impl Replica {
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
-        let mut buf = self.buffer.clone();
-        self.buffer.clear();
-
+        let mut buf = std::mem::take(&mut self.buffer);
         let mut failed = false;
+
         'main: loop {
             if buf.is_empty() || failed {
                 let n = tcp.read_buf(&mut buf).await?;
                 if n == 0 {
                     break;
                 }
-                failed = false;
             }
             let mut consumed = 0;
             let mut rest = buf.as_slice();
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
-                        let command_bytes = rest.len() - new_rest.len();
                         let should_account = c.should_account();
                         let is_write_command = c.is_write_command();
-
-                        self.handle_command(c, &mut tcp).await?;
-
                         if should_account {
-                            self.bytes_processed += command_bytes;
                             println!(
-                                "processed {} bytes of command, total: {}",
-                                command_bytes, self.bytes_processed
+                                "processed {} bytes of {:?}",
+                                rest.len() - new_rest.len(),
+                                &c
                             );
+                        }
+                        self.handle_command(c, &mut tcp).await?;
+                        if should_account {
+                            self.bytes_processed += rest.len() - new_rest.len();
                         }
                         if is_write_command {
                             let ack: Resp<'_> = Command::ReplConf(
@@ -143,10 +133,15 @@ impl Replica {
                             .into();
                             let _ = tcp.write_all(&ack.encode()).await;
                         }
-                        consumed += command_bytes;
+                        consumed += rest.len() - new_rest.len();
                         rest = new_rest;
+                        failed = false;
                     }
                     Err(err) => {
+                        // tcp.write_all(
+                        //     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
+                        // )
+                        // .await?;
                         eprintln!("err: {}, rest: {}", err, String::from_utf8_lossy(rest));
                         failed = true;
                         continue 'main;

@@ -128,11 +128,12 @@ impl Replica {
                                 rest.len() - new_rest.len(),
                                 &c
                             );
-                        }
-                        self.handle_command(c, &mut tcp).await?;
-                        if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();
                         }
+                        self.handle_command(c, &mut tcp).await?;
+                        // if should_account {
+                        //     self.bytes_processed += rest.len() - new_rest.len();
+                        // }
                         if is_write_command {
                             let ack: Resp<'_> = Command::ReplConf(
                                 Resp::bulk_string("ACK"),

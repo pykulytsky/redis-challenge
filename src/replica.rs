@@ -105,34 +105,42 @@ impl Replica {
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
-        let mut buf = self.buffer.clone();
+        // Start with any buffered data from the handshake
+        let mut buf = std::mem::take(&mut self.buffer);
 
-        let mut failed = false;
         'main: loop {
-            if buf.is_empty() || failed {
+            // Read more data if buffer is empty
+            if buf.is_empty() {
                 let n = tcp.read_buf(&mut buf).await?;
                 if n == 0 {
                     break;
                 }
             }
+
             let mut consumed = 0;
             let mut rest = buf.as_slice();
+
+            // Process all complete commands in the buffer
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
+                        let command_bytes = rest.len() - new_rest.len();
                         let should_account = c.should_account();
                         let is_write_command = c.is_write_command();
+
+                        // Handle the command
+                        self.handle_command(c, &mut tcp).await?;
+
+                        // Update byte count after successful processing
                         if should_account {
+                            self.bytes_processed += command_bytes;
                             println!(
-                                "processed {} bytes of {:?}",
-                                rest.len() - new_rest.len(),
-                                &c
+                                "Processed {} bytes, total: {}",
+                                command_bytes, self.bytes_processed
                             );
                         }
-                        self.handle_command(c, &mut tcp).await?;
-                        if should_account {
-                            self.bytes_processed += rest.len() - new_rest.len();
-                        }
+
+                        // Send ACK for write commands
                         if is_write_command {
                             let ack: Resp<'_> = Command::ReplConf(
                                 Resp::bulk_string("ACK"),
@@ -141,22 +149,26 @@ impl Replica {
                             .into();
                             let _ = tcp.write_all(&ack.encode()).await;
                         }
-                        consumed += rest.len() - new_rest.len();
+
+                        consumed += command_bytes;
                         rest = new_rest;
-                        failed = false;
                     }
-                    Err(err) => {
-                        // tcp.write_all(
-                        //     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
-                        // )
-                        // .await?;
-                        eprintln!("err: {}, rest: {}", err, String::from_utf8_lossy(rest));
-                        failed = true;
-                        continue 'main;
+                    Err(_err) => {
+                        // If we can't parse a command, we might need more data
+                        // Break out of the inner loop to read more
+                        break;
                     }
                 }
             }
+
+            // Remove processed bytes from buffer
             buf.drain(..consumed);
+
+            // If we consumed nothing and have data, we might have a partial command
+            // Continue to read more data
+            if consumed == 0 && !buf.is_empty() {
+                continue;
+            }
         }
 
         Ok(())

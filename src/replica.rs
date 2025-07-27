@@ -121,27 +121,18 @@ impl Replica {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
                         let should_account = c.should_account();
-                        let is_write_command = c.is_write_command();
-                        if should_account {
-                            println!(
-                                "processed {} bytes of {:?}, rest was: {}, new rest: {}",
-                                rest.len() - new_rest.len(),
-                                &c,
-                                rest.len(),
-                                new_rest.len()
-                            );
-                        }
+                        // let is_write_command = c.is_write_command();
+                        // if is_write_command {
+                        //     let ack: Resp<'_> = Command::ReplConf(
+                        //         Resp::bulk_string("ACK"),
+                        //         Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
+                        //     )
+                        //     .into();
+                        //     let _ = tcp.write_all(&ack.encode()).await;
+                        // }
                         self.handle_command(c, &mut tcp).await?;
                         if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();
-                        }
-                        if is_write_command {
-                            let ack: Resp<'_> = Command::ReplConf(
-                                Resp::bulk_string("ACK"),
-                                Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
-                            )
-                            .into();
-                            let _ = tcp.write_all(&ack.encode()).await;
                         }
                         consumed += rest.len() - new_rest.len();
                         rest = new_rest;
@@ -155,7 +146,6 @@ impl Replica {
                 }
             }
             let drained = buf.drain(..consumed);
-            dbg!(drained.count());
         }
 
         Ok(())

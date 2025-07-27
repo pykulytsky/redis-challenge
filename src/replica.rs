@@ -146,7 +146,7 @@ impl Replica {
                         failed = false;
                     }
                     Err(err) => {
-                        eprintln!("err: {}, rest: {}", err, String::from_utf8_lossy(rest));
+                        eprintln!("err: {}", err);
                         failed = true;
                         continue 'main;
                     }

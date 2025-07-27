@@ -238,10 +238,6 @@ impl Connection {
                 return Ok(());
             }
             Command::Wait(numofreplicas, timeout) => {
-                let _ = self.propagation_sender.send(Command::ReplConf(
-                    Resp::bulk_string("GETACK"),
-                    Resp::bulk_string("*"),
-                ));
                 let mut syncronized_replicas = self
                     .replica_offsets
                     .read()
@@ -254,7 +250,17 @@ impl Connection {
                                 .load(std::sync::atomic::Ordering::Acquire)
                     })
                     .count();
+
                 let numofreplicas = numofreplicas.expect_integer().unwrap();
+
+                // Ask for offset from replicas if there is not enough replicas with up to date offset
+                if syncronized_replicas < numofreplicas as usize {
+                    let _ = self.propagation_sender.send(Command::ReplConf(
+                        Resp::bulk_string("GETACK"),
+                        Resp::bulk_string("*"),
+                    ));
+                }
+
                 if syncronized_replicas < numofreplicas as usize {
                     let timeout = timeout.expect_integer().unwrap();
                     let replica_offsets = self.replica_offsets.clone();
@@ -284,14 +290,11 @@ impl Connection {
         };
         self.write_all(&resp.encode()).await?;
 
-        if command.should_account() && !self.is_promoted_to_replica {
+        if command.is_write_command() && !self.is_promoted_to_replica {
+            // TODO: this is not optimal
             let resp: Resp<'_> = command.clone().into();
             self.server_replication_offset
                 .fetch_add(resp.len(), std::sync::atomic::Ordering::Release);
-        }
-
-        if command.is_write_command() && !self.is_promoted_to_replica {
-            // TODO: this is not optimal
             let _ = self.propagation_sender.send(command.into_owned());
         }
 

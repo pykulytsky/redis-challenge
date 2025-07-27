@@ -229,7 +229,14 @@ pub async fn handle_command_from_replica<'c>(
                 if key.to_string().as_bytes() == b"ACK" {
                     if let Some(value) = value.expect_bulk_string() {
                         if let Ok(offset) = value.parse::<usize>() {
-                            println!("Replica {} sent offset {}", connection.addr.port(), offset);
+                            println!(
+                                "Replica {} sent offset {}, master offset: {}",
+                                connection.addr.port(),
+                                offset,
+                                connection
+                                    .server_replication_offset
+                                    .load(std::sync::atomic::Ordering::Acquire)
+                            );
                             connection
                                 .replica_offsets
                                 .write()

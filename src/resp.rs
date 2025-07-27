@@ -154,8 +154,10 @@ impl<'r> Resp<'r> {
         match self {
             Resp::SimpleString(s) => s.len() + CTRLF.len() + 1,
             Resp::SimpleError(e) => e.len() + CTRLF.len() + 1,
-            Resp::Integer(i) => num_digits(*i) + if *i < 0 { 1 } else { 0 },
-            Resp::BulkString(s) => num_digits(s.len() as i64) + (CTRLF.len() * 2) + s.len(),
+            Resp::Integer(i) => 1 + num_digits(*i) + if *i < 0 { 1 } else { 0 } + CTRLF.len(),
+            Resp::BulkString(s) => {
+                1 + num_digits(s.len() as i64) + CTRLF.len() + s.len() + CTRLF.len()
+            }
             Resp::Array(vec) => {
                 1 + num_digits(vec.len() as i64)
                     + CTRLF.len()

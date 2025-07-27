@@ -105,7 +105,7 @@ impl Replica {
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
-        let mut buf = std::mem::take(&mut self.buffer);
+        let mut buf = self.buffer.clone();
 
         let mut failed = false;
         'main: loop {
@@ -122,39 +122,19 @@ impl Replica {
                     Ok((c, new_rest)) => {
                         let should_account = c.should_account();
                         let is_write_command = c.is_write_command();
-                        let command_bytes = rest.len() - new_rest.len();
-                        println!(
-                            "Command: {:?}, bytes: {}, should_account: {}, is_write: {}, total_before: {}",
-                            &c, command_bytes, should_account, is_write_command, self.bytes_processed
-                        );
-
-                        // Handle GETACK immediately after updating byte count
-                        if let Command::ReplConf(key, _) = &c {
-                            if let crate::resp::Resp::BulkString(cow) = key {
-                                if cow.as_ref() == "GETACK" {
-                                    let ack: Resp<'_> = Command::ReplConf(
-                                        Resp::bulk_string("ACK"),
-                                        Resp::BulkString(Cow::Owned(
-                                            self.bytes_processed.to_string(),
-                                        )),
-                                    )
-                                    .into();
-                                    let _ = tcp.write_all(&ack.encode()).await;
-                                    consumed += command_bytes;
-                                    rest = new_rest;
-                                    failed = false;
-                                    continue;
-                                }
-                            }
-                        }
-
-                        // Update byte count first for all commands that should be accounted
                         if should_account {
-                            self.bytes_processed += command_bytes;
-                            println!("Updated bytes_processed to: {}", self.bytes_processed);
+                            println!(
+                                "processed {} bytes of {:?}, rest was: {}, new rest: {}",
+                                rest.len() - new_rest.len(),
+                                &c,
+                                rest.len(),
+                                new_rest.len()
+                            );
                         }
-
                         self.handle_command(c, &mut tcp).await?;
+                        if should_account {
+                            self.bytes_processed += rest.len() - new_rest.len();
+                        }
                         if is_write_command {
                             let ack: Resp<'_> = Command::ReplConf(
                                 Resp::bulk_string("ACK"),
@@ -163,7 +143,7 @@ impl Replica {
                             .into();
                             let _ = tcp.write_all(&ack.encode()).await;
                         }
-                        consumed += command_bytes;
+                        consumed += rest.len() - new_rest.len();
                         rest = new_rest;
                         failed = false;
                     }
@@ -174,12 +154,8 @@ impl Replica {
                     }
                 }
             }
-            buf.drain(..consumed);
-            println!(
-                "Drained {} bytes from buffer, buffer remaining: {}",
-                consumed,
-                buf.len()
-            );
+            let drained = buf.drain(..consumed);
+            dbg!(drained.count());
         }
 
         Ok(())
@@ -214,9 +190,13 @@ impl Replica {
             }
             Command::ReplConf(key, _value) => match key {
                 Resp::BulkString(cow) => {
-                    // GETACK is now handled in the main loop
-                    if cow.to_string().as_str() != "GETACK" {
-                        // Handle other REPLCONF commands if needed
+                    if cow.to_string().as_str() == "GETACK" {
+                        let resp: Resp<'_> = Command::ReplConf(
+                            Resp::bulk_string("ACK"),
+                            Resp::BulkString(Cow::Owned(self.bytes_processed.to_string())),
+                        )
+                        .into();
+                        tcp.write_all(&resp.encode()).await?;
                     }
                 }
                 _ => {}

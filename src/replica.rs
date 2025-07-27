@@ -89,6 +89,14 @@ impl Replica {
             let n = client.read_buf(&mut buf).await?;
             rest = &buf[..n];
         }
+        // TODO: rdb
+        assert!(rest[0] == b'$');
+        let length_end = &rest.iter().position(|b| *b == b'\r').unwrap();
+        let rdb_length: usize = std::str::from_utf8(&rest[1..*length_end])
+            .unwrap()
+            .parse()
+            .unwrap();
+        rest = &rest[rdb_length + rdb_length.ilog10() as usize + 4..];
         self.buffer.extend_from_slice(rest);
 
         let _ = self.handle(client).await;
@@ -97,9 +105,9 @@ impl Replica {
     }
 
     pub async fn handle(&mut self, mut tcp: TcpStream) -> Result<(), ConnectionError> {
-        let mut buf = std::mem::take(&mut self.buffer);
-        let mut failed = false;
+        let mut buf = self.buffer.clone();
 
+        let mut failed = false;
         'main: loop {
             if buf.is_empty() || failed {
                 let n = tcp.read_buf(&mut buf).await?;
@@ -138,17 +146,13 @@ impl Replica {
                         failed = false;
                     }
                     Err(err) => {
-                        // tcp.write_all(
-                        //     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
-                        // )
-                        // .await?;
                         eprintln!("err: {}, rest: {}", err, String::from_utf8_lossy(rest));
                         failed = true;
                         continue 'main;
                     }
                 }
             }
-            buf.drain(..consumed);
+            buf.clear();
         }
 
         Ok(())

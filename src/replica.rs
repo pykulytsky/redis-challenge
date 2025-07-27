@@ -124,12 +124,14 @@ impl Replica {
                         let is_write_command = c.is_write_command();
                         if should_account {
                             println!(
-                                "processed {} bytes of {:?}",
+                                "processed {} bytes of {:?}, rest was: {}, new rest: {}",
                                 rest.len() - new_rest.len(),
-                                &c
+                                &c,
+                                rest.len(),
+                                new_rest.len()
                             );
                         }
-                        dbg!(self.handle_command(c, &mut tcp).await);
+                        self.handle_command(c, &mut tcp).await?;
                         if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();
                         }

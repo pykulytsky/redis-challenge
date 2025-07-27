@@ -3,13 +3,13 @@ use std::borrow::Cow;
 use crate::resp::{Resp, RespError};
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConfigItem {
     Dir,
     DbFileName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command<'c> {
     Ping,
     Echo(String),

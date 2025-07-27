@@ -154,7 +154,8 @@ impl Replica {
                     }
                 }
             }
-            buf.drain(..consumed);
+            let drained = buf.drain(..consumed);
+            dbg!(drained);
         }
 
         Ok(())

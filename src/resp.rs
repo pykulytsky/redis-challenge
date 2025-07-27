@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::command::Command;
 use crate::config;
+use crate::data::Value;
 use crate::rdb::RdbString;
 
 pub fn num_digits(mut n: i64) -> usize {
@@ -334,5 +335,20 @@ impl<'c> From<Command<'c>> for Resp<'c> {
         }
 
         Resp::Array(array)
+    }
+}
+
+impl<'r> From<Value> for Resp<'r> {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Str(str) => Resp::BulkString(Cow::Owned(str)),
+            Value::Array(values) => Resp::Array(
+                values
+                    .into_iter()
+                    .map(|value| From::<Value>::from(value))
+                    .collect(),
+            ),
+            _ => unreachable!(),
+        }
     }
 }

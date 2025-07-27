@@ -49,13 +49,14 @@ impl<'c> Command<'c> {
         match self {
             Command::Set(_, _, _) => true,
             Command::Ping => true,
-            Command::ReplConf(key, _) => {
-                // GETACK commands should not be counted towards replica offset
-                match key {
-                    crate::resp::Resp::BulkString(cow) => cow.as_ref() != "GETACK",
-                    _ => true,
-                }
-            }
+            Command::ReplConf(_, _) => true,
+            // Command::ReplConf(key, _) => {
+            //     // GETACK commands should not be counted towards replica offset
+            //     match key {
+            //         crate::resp::Resp::BulkString(cow) => cow.as_ref() != "GETACK",
+            //         _ => true,
+            //     }
+            // }
             _ => false,
         }
     }

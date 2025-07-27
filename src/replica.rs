@@ -155,7 +155,7 @@ impl Replica {
                 }
             }
             let drained = buf.drain(..consumed);
-            dbg!(drained);
+            dbg!(drained.count());
         }
 
         Ok(())

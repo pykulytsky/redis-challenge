@@ -150,7 +150,7 @@ impl Replica {
                         //     &Resp::SimpleError(Cow::Borrowed("unknown command")).encode(),
                         // )
                         // .await?;
-                        eprintln!("{}", err);
+                        eprintln!("err: {}, rest: {:?}", err, rest);
                         failed = true;
                         continue 'main;
                     }

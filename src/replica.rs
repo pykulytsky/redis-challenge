@@ -145,7 +145,7 @@ impl Replica {
                     }
                 }
             }
-            let drained = buf.drain(..consumed);
+            buf.drain(..consumed);
         }
 
         Ok(())

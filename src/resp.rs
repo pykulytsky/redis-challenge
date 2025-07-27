@@ -330,6 +330,7 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 array.push(timeout);
             }
             Command::Select(index) => array.push(index),
+            Command::Type(key) => array.push(key),
         }
 
         Resp::Array(array)

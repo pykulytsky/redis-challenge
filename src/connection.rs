@@ -301,6 +301,17 @@ impl Connection {
                 Resp::Integer(syncronized_replicas as i64)
             }
             Command::Select(_) => return Ok(()),
+            Command::Type(key) => {
+                let value = self.db.read().await.get(key).cloned();
+                let value_type = match value {
+                    Some(Resp::SimpleString(_) | Resp::BulkString(_)) => "string",
+                    Some(Resp::SimpleError(_)) => "error",
+                    Some(Resp::Integer(_)) => "integer",
+                    Some(Resp::Array(_)) => "array",
+                    None => "none",
+                };
+                Resp::simple_string(value_type)
+            }
         };
         self.write_all(&resp.encode()).await?;
 

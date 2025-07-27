@@ -253,6 +253,7 @@ impl Connection {
 
                 let numofreplicas = numofreplicas.expect_integer().unwrap();
 
+                dbg!(syncronized_replicas, numofreplicas);
                 // Ask for offset from replicas if there is not enough replicas with up to date offset
                 if syncronized_replicas < numofreplicas as usize {
                     let _ = self.propagation_sender.send(Command::ReplConf(

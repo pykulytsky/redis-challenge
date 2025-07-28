@@ -15,11 +15,8 @@ use tokio::{net::TcpStream, sync::RwLock};
 use crate::command::CommandError;
 use crate::connection::ConnectionError;
 use crate::replica::Replica;
-use crate::REPLICATION_ID;
 use crate::{command::Command, config::Config, connection::Connection, rdb::Rdb, resp::Resp};
-
-pub type Db = Arc<RwLock<HashMap<Resp<'static>, Resp<'static>>>>;
-pub type Expiries = Arc<RwLock<HashMap<Resp<'static>, i64>>>;
+use crate::{Db, Expiries, REPLICATION_ID};
 
 #[derive(Debug)]
 pub struct Server {

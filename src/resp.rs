@@ -48,6 +48,9 @@ pub enum RespError {
 
     #[error("There is no enough parts for the provided type")]
     NotEnoughtParts,
+
+    #[error("Data type {0} can not be serialized with RESP")]
+    DataTypeIsNotSupported(String),
 }
 
 impl<'input, S> Resp<'input, S>
@@ -332,23 +335,31 @@ impl<'c> From<Command<'c>> for Resp<'c> {
             }
             Command::Select(index) => array.push(index),
             Command::Type(key) => array.push(key),
+            Command::XAdd(key, id, list) => {
+                array.push(key);
+                array.push(id);
+                array.extend(list);
+            }
         }
 
         Resp::Array(array)
     }
 }
 
-impl<'r> From<Value> for Resp<'r> {
-    fn from(value: Value) -> Self {
+impl<'r> TryFrom<Value> for Resp<'r> {
+    type Error = RespError;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Str(str) => Resp::BulkString(Cow::Owned(str)),
-            Value::Array(values) => Resp::Array(
+            Value::Str(str) => Ok(Resp::BulkString(Cow::Owned(str))),
+            Value::List(values) => Ok(Resp::Array(
                 values
                     .into_iter()
-                    .map(|value| From::<Value>::from(value))
+                    .flat_map(|value| TryFrom::<Value>::try_from(value))
                     .collect(),
-            ),
-            _ => unreachable!(),
+            )),
+            v => Err(RespError::DataTypeIsNotSupported(
+                v.value_type().to_string(),
+            )),
         }
     }
 }

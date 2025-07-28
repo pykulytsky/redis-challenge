@@ -24,6 +24,7 @@ pub enum Command<'c> {
     Wait(Resp<'c>, Resp<'c>),
     Select(Resp<'c>),
     Type(Resp<'c>),
+    XAdd(Resp<'c>, Resp<'c>, Vec<Resp<'c>>),
 }
 
 #[derive(Debug, Error)]
@@ -74,6 +75,11 @@ impl<'c> Command<'c> {
             Command::Wait(resp, resp1) => Command::Wait(resp.into_owned(), resp1.into_owned()),
             Command::Select(resp) => Command::Select(resp.into_owned()),
             Command::Type(resp) => Command::Type(resp.into_owned()),
+            Command::XAdd(key, id, array) => Command::XAdd(
+                key.into_owned(),
+                id.into_owned(),
+                array.into_iter().map(|i| i.into_owned()).collect(),
+            ),
         }
     }
 
@@ -208,6 +214,25 @@ impl<'c> Command<'c> {
                             })
                             .ok_or(IncorrectFormat)?,
                     )),
+                    &"XADD" => Ok(Self::XAdd(
+                        array
+                            .get(1)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?,
+                        array
+                            .get(2)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?,
+                        array[3..].to_vec(),
+                    )),
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),
@@ -233,6 +258,7 @@ impl<'c> Command<'c> {
             Command::Wait(_, _) => "WAIT".to_string(),
             Command::Select(_) => "SELECT".to_string(),
             Command::Type(_) => "TYPE".to_string(),
+            Command::XAdd(_, _, _) => "XADD".to_string(),
         }
     }
 }

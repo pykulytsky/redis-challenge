@@ -31,8 +31,11 @@ mod replica;
 mod resp;
 mod server;
 
-pub type Db = Arc<RwLock<HashMap<Resp<'static>, Resp<'static>>>>;
-pub type Expiries = Arc<RwLock<HashMap<Resp<'static>, i64>>>;
+pub type InnerDb = HashMap<Resp<'static>, Value>;
+pub type InnerExpiries = HashMap<Resp<'static>, i64>;
+
+pub type Db = Arc<RwLock<InnerDb>>;
+pub type Expiries = Arc<RwLock<InnerExpiries>>;
 
 const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
 

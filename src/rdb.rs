@@ -1,6 +1,6 @@
 #![allow(dead_code, unused)]
 
-use crate::{config::Config, resp::RespError, Resp};
+use crate::{config::Config, resp::RespError, InnerDb, InnerExpiries, Resp};
 use core::str;
 use std::{
     collections::HashMap,
@@ -151,7 +151,8 @@ impl Rdb {
         for (key, value) in self.database.read().await.iter() {
             buf.push(0); // flag: string, TODO: handle all types
             buf.extend(key.clone().encode());
-            buf.extend(value.clone().encode());
+            let resp: Resp<'_> = value.clone().try_into().unwrap();
+            buf.extend(resp.encode());
             if let Some(expiry) = self.expiries.read().await.get(key) {
                 buf.push(HAS_EXPIRY_FLAG);
                 // TODO handle actual timestamps
@@ -203,8 +204,8 @@ impl Rdb {
 
         fn decode_inner<'input>(
             input: &'input [u8],
-            db: &mut HashMap<Resp<'static>, Resp<'static>>,
-            expiries: &mut HashMap<Resp<'static>, i64>,
+            db: &mut InnerDb,
+            expiries: &mut InnerExpiries,
         ) -> Option<&'input [u8]> {
             let (type_value, mut rest) = input.split_first()?;
             let mut expiry = None;

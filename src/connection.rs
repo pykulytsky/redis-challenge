@@ -1,4 +1,5 @@
 use core::str;
+use indexmap::IndexMap;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -22,6 +23,7 @@ use crate::{
         ConfigItem::{DbFileName, Dir},
     },
     config::Config,
+    data::Value,
     resp::{Resp, RespError},
     Db, Expiries,
 };
@@ -141,12 +143,13 @@ impl Connection {
                 .await
                 .get(key)
                 .cloned()
-                .unwrap_or(Resp::bulk_string("")),
+                .unwrap_or(Value::Str("".to_string()))
+                .try_into()?,
             Command::Set(key, value, expiry) => {
-                self.db
-                    .write()
-                    .await
-                    .insert(key.clone().into_owned(), value.clone().into_owned());
+                self.db.write().await.insert(
+                    key.clone().into_owned().into(),
+                    value.clone().into_owned().into(),
+                );
                 if let Some(expiry) = expiry {
                     let expiry = *expiry;
                     let db = self.db.clone();
@@ -302,14 +305,81 @@ impl Connection {
             Command::Select(_) => return Ok(()),
             Command::Type(key) => {
                 let value = self.db.read().await.get(key).cloned();
-                let value_type = match value {
-                    Some(Resp::SimpleString(_) | Resp::BulkString(_)) => "string",
-                    Some(Resp::SimpleError(_)) => "error",
-                    Some(Resp::Integer(_)) => "integer",
-                    Some(Resp::Array(_)) => "array",
-                    None => "none",
-                };
-                Resp::simple_string(value_type)
+                Resp::simple_string(value.map(|v| v.value_type()).unwrap_or("none"))
+            }
+            Command::XAdd(key, id, items) => {
+                let mut db = self.db.write().await;
+                let entry = db.entry(key.clone().into_owned());
+                match entry {
+                    std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
+                        let value = occupied_entry.get_mut();
+                        match value {
+                            Value::Stream(ref mut index_map) => {
+                                let Some(id) = id.expect_bulk_string().map(|k| k.to_string())
+                                else {
+                                    todo!()
+                                };
+                                let stream_entry = index_map.entry(id);
+                                match stream_entry {
+                                    indexmap::map::Entry::Occupied(mut occupied_entry) => {
+                                        let index_map = occupied_entry.get_mut();
+                                        for pair in items.chunks(2) {
+                                            if pair.len() == 2 {
+                                                let Some(key) = pair[0]
+                                                    .expect_bulk_string()
+                                                    .map(|k| k.to_string())
+                                                else {
+                                                    continue;
+                                                };
+                                                let value = &pair[1];
+                                                index_map
+                                                    .insert(key, value.clone().into_owned().into());
+                                            }
+                                        }
+                                    }
+                                    indexmap::map::Entry::Vacant(vacant_entry) => {
+                                        let mut index_map = IndexMap::new();
+                                        for pair in items.chunks(2) {
+                                            if pair.len() == 2 {
+                                                let Some(key) = pair[0]
+                                                    .expect_bulk_string()
+                                                    .map(|k| k.to_string())
+                                                else {
+                                                    continue;
+                                                };
+                                                let value = &pair[1];
+                                                index_map
+                                                    .insert(key, value.clone().into_owned().into());
+                                            }
+                                        }
+                                        vacant_entry.insert(index_map);
+                                    }
+                                }
+                            }
+                            _ => todo!("error"),
+                        }
+                    }
+                    std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                        let mut outer_index_map = IndexMap::new();
+                        let mut index_map = IndexMap::new();
+                        for pair in items.chunks(2) {
+                            if pair.len() == 2 {
+                                let Some(key) = pair[0].expect_bulk_string().map(|k| k.to_string())
+                                else {
+                                    continue;
+                                };
+                                let value = &pair[1];
+                                index_map.insert(key, value.clone().into_owned().into());
+                            }
+                        }
+                        let Some(id) = id.expect_bulk_string().map(|k| k.to_string()) else {
+                            todo!()
+                        };
+                        outer_index_map.insert(id, index_map);
+                        vacant_entry.insert(Value::Stream(outer_index_map));
+                    }
+                }
+                id.clone()
             }
         };
         self.write_all(&resp.encode()).await?;

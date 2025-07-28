@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 
-use crate::resp::Resp;
+use crate::{rdb::RdbString, resp::Resp};
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Str(String),
-    Array(Vec<Value>),
+    List(Vec<Value>),
     Stream(IndexMap<String, IndexMap<String, Value>>),
 }
 
@@ -16,6 +16,14 @@ impl Value {
         match self {
             Value::Str(str) => Some(str),
             _ => None,
+        }
+    }
+
+    pub fn value_type(&self) -> &'static str {
+        match self {
+            Value::Str(_) => "string",
+            Value::List(_) => "list",
+            Value::Stream(_) => "stream",
         }
     }
 }
@@ -27,12 +35,18 @@ impl From<Resp<'_>> for Value {
             Resp::SimpleError(cow) => Self::Str(cow.into_owned()),
             Resp::Integer(number) => Self::Str(number.to_string()),
             Resp::BulkString(cow) => Self::Str(cow.into_owned()),
-            Resp::Array(resps) => Self::Array(
+            Resp::Array(resps) => Self::List(
                 resps
                     .into_iter()
                     .map(|resp| From::<Resp<'_>>::from(resp))
                     .collect(),
             ),
         }
+    }
+}
+
+impl From<RdbString> for Value {
+    fn from(value: RdbString) -> Self {
+        Self::Str(value.0)
     }
 }

@@ -161,7 +161,7 @@ impl Replica {
                 self.db
                     .write()
                     .await
-                    .insert(key.clone().into_owned(), value.clone().into_owned());
+                    .insert(key.clone().into_owned(), value.clone().into_owned().into());
                 if let Some(expiry) = expiry {
                     let expiry = *expiry;
                     let db = self.db.clone();

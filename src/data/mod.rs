@@ -4,11 +4,13 @@ use indexmap::IndexMap;
 
 use crate::{rdb::RdbString, resp::Resp};
 
+pub mod stream;
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Str(String),
     List(Vec<Value>),
-    Stream(IndexMap<String, IndexMap<String, Value>>),
+    Stream(stream::Stream),
 }
 
 impl Value {

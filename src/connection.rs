@@ -23,7 +23,10 @@ use crate::{
         ConfigItem::{DbFileName, Dir},
     },
     config::Config,
-    data::Value,
+    data::{
+        stream::{Stream, StreamError, StreamId},
+        Value,
+    },
     resp::{Resp, RespError},
     Db, Expiries,
 };
@@ -53,6 +56,9 @@ pub enum ConnectionError {
 
     #[error("Command error")]
     Command(#[from] CommandError),
+
+    #[error("Stream error")]
+    Stream(#[from] StreamError),
 }
 
 impl Connection {
@@ -310,73 +316,34 @@ impl Connection {
             Command::XAdd(key, id, items) => {
                 let mut db = self.db.write().await;
                 let entry = db.entry(key.clone().into_owned());
+                let stream_id = StreamId::try_from(id)?;
                 match entry {
                     std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
                         let value = occupied_entry.get_mut();
                         match value {
-                            Value::Stream(ref mut index_map) => {
-                                let Some(id) = id.expect_bulk_string().map(|k| k.to_string())
-                                else {
-                                    todo!()
-                                };
-                                let stream_entry = index_map.entry(id);
-                                match stream_entry {
-                                    indexmap::map::Entry::Occupied(mut occupied_entry) => {
-                                        let index_map = occupied_entry.get_mut();
-                                        for pair in items.chunks(2) {
-                                            if pair.len() == 2 {
-                                                let Some(key) = pair[0]
-                                                    .expect_bulk_string()
-                                                    .map(|k| k.to_string())
-                                                else {
-                                                    continue;
-                                                };
-                                                let value = &pair[1];
-                                                index_map
-                                                    .insert(key, value.clone().into_owned().into());
-                                            }
-                                        }
-                                    }
-                                    indexmap::map::Entry::Vacant(vacant_entry) => {
-                                        let mut index_map = IndexMap::new();
-                                        for pair in items.chunks(2) {
-                                            if pair.len() == 2 {
-                                                let Some(key) = pair[0]
-                                                    .expect_bulk_string()
-                                                    .map(|k| k.to_string())
-                                                else {
-                                                    continue;
-                                                };
-                                                let value = &pair[1];
-                                                index_map
-                                                    .insert(key, value.clone().into_owned().into());
-                                            }
-                                        }
-                                        vacant_entry.insert(index_map);
-                                    }
+                            Value::Stream(ref mut stream) => {
+                                for pair in items.chunks(2) {
+                                    let key = pair[0].expect_bulk_string().unwrap();
+                                    let value = Value::from(pair[1].clone());
+                                    stream.insert(stream_id, key.to_string(), value);
                                 }
                             }
                             _ => todo!("error"),
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(vacant_entry) => {
-                        let mut outer_index_map = IndexMap::new();
-                        let mut index_map = IndexMap::new();
+                        let mut stream = Stream::new();
                         for pair in items.chunks(2) {
                             if pair.len() == 2 {
                                 let Some(key) = pair[0].expect_bulk_string().map(|k| k.to_string())
                                 else {
                                     continue;
                                 };
-                                let value = &pair[1];
-                                index_map.insert(key, value.clone().into_owned().into());
+                                let value = Value::from(pair[1].clone());
+                                stream.insert(stream_id, key, value);
                             }
                         }
-                        let Some(id) = id.expect_bulk_string().map(|k| k.to_string()) else {
-                            todo!()
-                        };
-                        outer_index_map.insert(id, index_map);
-                        vacant_entry.insert(Value::Stream(outer_index_map));
+                        vacant_entry.insert(Value::Stream(stream));
                     }
                 }
                 id.clone()

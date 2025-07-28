@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::command::Command;
 use crate::config;
+use crate::data::stream::StreamId;
 use crate::data::Value;
 use crate::rdb::RdbString;
 
@@ -361,5 +362,14 @@ impl<'r> TryFrom<Value> for Resp<'r> {
                 v.value_type().to_string(),
             )),
         }
+    }
+}
+
+impl<'r> From<StreamId> for Resp<'r> {
+    fn from(id: StreamId) -> Self {
+        Self::BulkString(Cow::Owned(format!(
+            "{}:{}",
+            id.milliseconds, id.sequence_number
+        )))
     }
 }

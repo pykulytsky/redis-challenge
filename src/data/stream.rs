@@ -1,4 +1,4 @@
-use crate::{data::Value, resp::Resp};
+use crate::{data::Value, resp::Resp, utils::get_epoch_ms};
 use indexmap::IndexMap;
 use thiserror::Error;
 
@@ -22,7 +22,7 @@ pub enum StreamError {
 
 #[derive(Debug, Clone, Copy, Hash)]
 pub struct StreamId {
-    pub milliseconds: usize,
+    pub milliseconds: usize, // Should store it either as u128 or u64
     pub sequence_number: usize,
 }
 
@@ -146,7 +146,24 @@ impl Stream {
                         sequence_number,
                     }
                 }
-                StreamError::ShouldGenerateFullId => todo!(),
+                StreamError::ShouldGenerateFullId => {
+                    let milliseconds = get_epoch_ms();
+                    let sequence_number = match self.inner.keys().last() {
+                        Some(key) => {
+                            if key.milliseconds == milliseconds {
+                                key.sequence_number + 1
+                            } else {
+                                0
+                            }
+                        }
+                        None => 0, // We can safely return zero here as milliseconds should never be equal to 0
+                    };
+
+                    StreamId {
+                        milliseconds,
+                        sequence_number,
+                    }
+                }
                 _ => return Err(err),
             },
         };

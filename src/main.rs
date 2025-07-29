@@ -30,6 +30,7 @@ mod rdb;
 mod replica;
 mod resp;
 mod server;
+mod utils;
 
 pub type InnerDb = HashMap<Resp<'static>, Value>;
 pub type InnerExpiries = HashMap<Resp<'static>, i64>;

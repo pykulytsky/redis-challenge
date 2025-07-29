@@ -368,7 +368,7 @@ impl<'r> TryFrom<Value> for Resp<'r> {
 impl<'r> From<StreamId> for Resp<'r> {
     fn from(id: StreamId) -> Self {
         Self::BulkString(Cow::Owned(format!(
-            "{}:{}",
+            "{}-{}",
             id.milliseconds, id.sequence_number
         )))
     }

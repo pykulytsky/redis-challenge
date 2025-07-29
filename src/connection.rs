@@ -317,6 +317,7 @@ impl Connection {
                 let mut db = self.db.write().await;
                 let entry = db.entry(key.clone().into_owned());
                 let mut err = None;
+                let mut id = id.clone();
 
                 match entry {
                     std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
@@ -326,10 +327,11 @@ impl Connection {
                                 for pair in items.chunks(2) {
                                     let key = pair[0].expect_bulk_string().unwrap();
                                     let value = Value::from(pair[1].clone());
-                                    if let Err(stream_err) =
-                                        stream.insert(id, key.to_string(), value)
-                                    {
-                                        err = Some(stream_err);
+                                    match stream.insert(&id, key.to_string(), value) {
+                                        Ok(stream_id) => id = stream_id.into(),
+                                        Err(stream_err) => {
+                                            err = Some(stream_err);
+                                        }
                                     }
                                 }
                             }
@@ -345,8 +347,11 @@ impl Connection {
                                     continue;
                                 };
                                 let value = Value::from(pair[1].clone());
-                                if let Err(stream_err) = stream.insert(id, key, value) {
-                                    err = Some(stream_err);
+                                match stream.insert(&id, key.to_string(), value) {
+                                    Ok(stream_id) => id = stream_id.into(),
+                                    Err(stream_err) => {
+                                        err = Some(stream_err);
+                                    }
                                 }
                             }
                         }

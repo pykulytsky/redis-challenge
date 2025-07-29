@@ -116,7 +116,12 @@ impl Stream {
         }
     }
 
-    pub fn insert(&mut self, id: &Resp<'_>, key: String, value: Value) -> Result<(), StreamError> {
+    pub fn insert(
+        &mut self,
+        id: &Resp<'_>,
+        key: String,
+        value: Value,
+    ) -> Result<StreamId, StreamError> {
         let id = match StreamId::try_from(id) {
             Ok(id) => id,
             Err(err) => match err {
@@ -169,6 +174,6 @@ impl Stream {
             }
         }
 
-        Ok(())
+        Ok(id)
     }
 }

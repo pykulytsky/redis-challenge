@@ -346,6 +346,11 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 array.push(from);
                 array.push(to);
             }
+            Command::XRead(key, streams, ids) => {
+                array.push(key);
+                array.extend(streams);
+                array.extend(ids);
+            }
         }
 
         Resp::Array(array)

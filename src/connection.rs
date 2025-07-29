@@ -369,6 +369,21 @@ impl Connection {
                     _ => todo!(),
                 }
             }
+            Command::XRead(key, streams, ids) => {
+                let db = self.db.read().await;
+                let res = streams
+                    .into_iter()
+                    .enumerate()
+                    .flat_map(|(idx, key)| match db.get(&key).cloned() {
+                        Some(Value::Stream(stream)) => Some(Resp::Array(vec![
+                            key.clone(),
+                            stream.range(&ids[idx], &StreamId::MAX.into()).ok()?,
+                        ])),
+                        _ => todo!(),
+                    })
+                    .collect();
+                Resp::Array(res)
+            }
         };
         self.write_all(&resp.encode()).await?;
 

@@ -3,6 +3,8 @@ use std::borrow::Cow;
 use crate::resp::{Resp, RespError};
 use thiserror::Error;
 
+pub mod get;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfigItem {
     Dir,
@@ -26,6 +28,7 @@ pub enum Command<'c> {
     Type(Resp<'c>),
     XAdd(Resp<'c>, Resp<'c>, Vec<Resp<'c>>),
     XRange(Resp<'c>, Resp<'c>, Resp<'c>),
+    XRead(Resp<'c>, Vec<Resp<'c>>, Vec<Resp<'c>>),
 }
 
 #[derive(Debug, Error)]
@@ -84,6 +87,11 @@ impl<'c> Command<'c> {
             Command::XRange(key, from, to) => {
                 Command::XRange(key.into_owned(), from.into_owned(), to.into_owned())
             }
+            Command::XRead(key, streams, ids) => Command::XRead(
+                key.into_owned(),
+                streams.into_iter().map(|s| s.into_owned()).collect(),
+                ids.into_iter().map(|id| id.into_owned()).collect(),
+            ),
         }
     }
 
@@ -263,6 +271,20 @@ impl<'c> Command<'c> {
                             })
                             .ok_or(IncorrectFormat)?,
                     )),
+                    &"XREAD" => {
+                        let key = array
+                            .get(1)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?;
+                        let rest = &array[2..];
+                        let streams = rest[..rest.len() / 2].to_vec();
+                        let ids = rest[rest.len() / 2..].to_vec();
+                        Ok(Self::XRead(key, streams, ids))
+                    }
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),
@@ -290,6 +312,7 @@ impl<'c> Command<'c> {
             Command::Type(_) => "TYPE".to_string(),
             Command::XAdd(_, _, _) => "XADD".to_string(),
             Command::XRange(_, _, _) => "XRANGE".to_string(),
+            Command::XRead(_, _, _) => "XREAD".to_string(),
         }
     }
 }

@@ -218,7 +218,7 @@ impl Stream {
             }
         })?;
         let to_id = to.try_into().or_else(|e| {
-            let key = from
+            let key = to
                 .expect_bulk_string()
                 .ok_or(StreamError::MallformedStreamId)?;
             if key.as_bytes() == b"+" {

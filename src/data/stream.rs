@@ -70,19 +70,37 @@ impl TryFrom<&Resp<'_>> for StreamId {
             return Err(StreamError::MallformedStreamId);
         };
 
-        let (milliseconds, sequence_number) = resp
-            .split_once("-")
-            .and_then(|(left, right)| {
-                let left: usize = left.parse().ok()?;
-                let right: usize = right.parse().ok()?;
-                Some((left, right))
-            })
-            .ok_or(StreamError::MallformedStreamId)?;
-
-        Ok(Self {
-            milliseconds,
-            sequence_number,
-        })
+        let pair = resp.split_once('-');
+        match pair {
+            Some(pair) => match pair {
+                (milliseconds, "*") => {
+                    return Err(StreamError::ShouldGenerateSequenceNumber(
+                        milliseconds
+                            .parse()
+                            .map_err(|_| StreamError::MallformedStreamId)?,
+                    ))
+                }
+                (milliseconds, sequence_number) => {
+                    let milliseconds: usize = milliseconds
+                        .parse()
+                        .map_err(|_| StreamError::MallformedStreamId)?;
+                    let sequence_number: usize = sequence_number
+                        .parse()
+                        .map_err(|_| StreamError::MallformedStreamId)?;
+                    Ok(Self {
+                        milliseconds,
+                        sequence_number,
+                    })
+                }
+            },
+            None => {
+                if resp == "*" {
+                    return Err(StreamError::ShouldGenerateFullId);
+                } else {
+                    return Err(StreamError::MallformedStreamId);
+                }
+            }
+        }
     }
 }
 

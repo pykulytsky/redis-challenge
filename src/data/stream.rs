@@ -47,7 +47,7 @@ impl PartialOrd for StreamId {
 }
 
 impl Ord for StreamId {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         todo!()
     }
 }

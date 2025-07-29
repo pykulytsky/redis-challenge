@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, usize};
 
 use crate::{data::Value, resp::Resp, utils::get_epoch_ms};
 use indexmap::IndexMap;
@@ -29,6 +29,16 @@ pub struct StreamId {
 }
 
 impl StreamId {
+    pub const MIN: Self = Self {
+        milliseconds: usize::MIN,
+        sequence_number: usize::MIN,
+    };
+
+    pub const MAX: Self = Self {
+        milliseconds: usize::MAX,
+        sequence_number: usize::MAX,
+    };
+
     pub fn is_zero(&self) -> bool {
         self.milliseconds == 0 && self.sequence_number == 0
     }
@@ -197,8 +207,26 @@ impl Stream {
     }
 
     pub fn range(&self, from: &Resp<'_>, to: &Resp<'_>) -> Result<Resp<'static>, StreamError> {
-        let from_id = from.try_into()?;
-        let to_id = to.try_into()?;
+        let from_id = from.try_into().or_else(|e| {
+            let key = from
+                .expect_bulk_string()
+                .ok_or(StreamError::MallformedStreamId)?;
+            if key.as_bytes() == b"-" {
+                Ok(StreamId::MIN)
+            } else {
+                Err(e)
+            }
+        })?;
+        let to_id = to.try_into().or_else(|e| {
+            let key = from
+                .expect_bulk_string()
+                .ok_or(StreamError::MallformedStreamId)?;
+            if key.as_bytes() == b"+" {
+                Ok(StreamId::MAX)
+            } else {
+                Err(e)
+            }
+        })?;
         let vec = self
             .inner
             .clone()

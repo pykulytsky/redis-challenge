@@ -12,6 +12,12 @@ pub enum StreamError {
 
     #[error("ERR The ID specified in XADD must be greater than 0-0")]
     ZeroStreamId,
+
+    #[error("Missing sequence number")]
+    ShouldGenerateSequenceNumber(usize),
+
+    #[error("Missing milliseconds and sequence number")]
+    ShouldGenerateFullId,
 }
 
 #[derive(Debug, Clone, Copy, Hash)]
@@ -23,6 +29,10 @@ pub struct StreamId {
 impl StreamId {
     pub fn is_zero(&self) -> bool {
         self.milliseconds == 0 && self.sequence_number == 0
+    }
+
+    pub fn cmp_millis(&self, other: &Self) -> bool {
+        self.milliseconds == other.milliseconds
     }
 }
 
@@ -89,7 +99,35 @@ impl Stream {
     }
 
     pub fn insert(&mut self, id: &Resp<'_>, key: String, value: Value) -> Result<(), StreamError> {
-        let id = StreamId::try_from(id)?;
+        let id = match StreamId::try_from(id) {
+            Ok(id) => id,
+            Err(err) => match err {
+                StreamError::ShouldGenerateSequenceNumber(milliseconds) => {
+                    let sequence_number = match self
+                        .inner
+                        .keys()
+                        .find(|key| key.milliseconds == milliseconds)
+                    {
+                        Some(id) => id.sequence_number + 1,
+                        None => {
+                            if milliseconds == 0 {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                    };
+
+                    StreamId {
+                        milliseconds,
+                        sequence_number,
+                    }
+                }
+                StreamError::ShouldGenerateFullId => todo!(),
+                _ => return Err(err),
+            },
+        };
+
         if id.is_zero() {
             return Err(StreamError::ZeroStreamId);
         }

@@ -108,7 +108,6 @@ impl Replica {
         let mut buf = self.buffer.clone();
 
         let mut failed = false;
-        let mut last_command: Option<String> = None;
         'main: loop {
             if buf.is_empty() || failed {
                 let n = tcp.read_buf(&mut buf).await?;
@@ -121,8 +120,7 @@ impl Replica {
             while !rest.is_empty() {
                 match Command::parse(rest) {
                     Ok((c, new_rest)) => {
-                        let command_name = c.name();
-                        let mut should_account = c.should_account();
+                        let should_account = c.should_account();
                         // let is_write_command = c.is_write_command();
                         // if is_write_command {
                         //     let ack: Resp<'_> = Command::ReplConf(
@@ -133,21 +131,12 @@ impl Replica {
                         //     let _ = tcp.write_all(&ack.encode()).await;
                         // }
                         self.handle_command(c, &mut tcp).await?;
-                        match last_command {
-                            Some(ref c) => {
-                                if c.as_str() == command_name.as_str() {
-                                    should_account = false;
-                                }
-                            }
-                            None => {}
-                        }
                         if should_account {
                             self.bytes_processed += rest.len() - new_rest.len();
                         }
                         consumed += rest.len() - new_rest.len();
                         rest = new_rest;
                         failed = false;
-                        last_command = Some(command_name);
                     }
                     Err(err) => {
                         eprintln!("err: {}", err);

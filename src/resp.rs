@@ -341,6 +341,11 @@ impl<'c> From<Command<'c>> for Resp<'c> {
                 array.push(id);
                 array.extend(list);
             }
+            Command::XRange(key, from, to) => {
+                array.push(key);
+                array.push(from);
+                array.push(to);
+            }
         }
 
         Resp::Array(array)

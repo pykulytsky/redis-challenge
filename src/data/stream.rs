@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{data::Value, resp::Resp, utils::get_epoch_ms};
 use indexmap::IndexMap;
 use thiserror::Error;
@@ -192,5 +194,28 @@ impl Stream {
         }
 
         Ok(id)
+    }
+
+    pub fn range(&self, from: &Resp<'_>, to: &Resp<'_>) -> Result<Resp<'static>, StreamError> {
+        let from_id = from.try_into()?;
+        let to_id = to.try_into()?;
+        let vec = self
+            .inner
+            .clone()
+            .into_iter()
+            .filter(|(id, _)| *id >= from_id && *id <= to_id)
+            .map(|(id, value)| (id, value.into_iter()))
+            .map(|(id, items)| {
+                let mut inner_array = vec![];
+                for (key, value) in items {
+                    inner_array.push(Resp::BulkString(Cow::Owned(key)));
+                    inner_array.push(value.try_into().unwrap());
+                }
+
+                Resp::Array(vec![id.into(), Resp::Array(inner_array)])
+            })
+            .collect();
+
+        Ok(Resp::Array(vec))
     }
 }

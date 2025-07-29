@@ -361,6 +361,14 @@ impl Connection {
                 err.map(|err| Resp::SimpleError(Cow::Owned(err.to_string())))
                     .unwrap_or(id.clone())
             }
+            Command::XRange(key, from, to) => {
+                let db = self.db.read().await;
+                let value = db.get(key).cloned();
+                match value {
+                    Some(Value::Stream(stream)) => stream.range(&from, &to)?,
+                    _ => todo!(),
+                }
+            }
         };
         self.write_all(&resp.encode()).await?;
 

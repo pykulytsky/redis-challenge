@@ -25,6 +25,7 @@ pub enum Command<'c> {
     Select(Resp<'c>),
     Type(Resp<'c>),
     XAdd(Resp<'c>, Resp<'c>, Vec<Resp<'c>>),
+    XRange(Resp<'c>, Resp<'c>, Resp<'c>),
 }
 
 #[derive(Debug, Error)]
@@ -80,6 +81,9 @@ impl<'c> Command<'c> {
                 id.into_owned(),
                 array.into_iter().map(|i| i.into_owned()).collect(),
             ),
+            Command::XRange(key, from, to) => {
+                Command::XRange(key.into_owned(), from.into_owned(), to.into_owned())
+            }
         }
     }
 
@@ -233,6 +237,32 @@ impl<'c> Command<'c> {
                             .ok_or(IncorrectFormat)?,
                         array[3..].to_vec(),
                     )),
+                    &"XRANGE" => Ok(Self::XRange(
+                        array
+                            .get(1)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?,
+                        array
+                            .get(2)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?,
+                        array
+                            .get(3)
+                            .and_then(|k| {
+                                Some(Resp::BulkString(
+                                    k.expect_bulk_string()?.clone().into_owned().into(),
+                                ))
+                            })
+                            .ok_or(IncorrectFormat)?,
+                    )),
                     c => Err(UnsupportedCommand(c.to_string())),
                 },
                 _ => Err(IncorrectFormat),
@@ -259,6 +289,7 @@ impl<'c> Command<'c> {
             Command::Select(_) => "SELECT".to_string(),
             Command::Type(_) => "TYPE".to_string(),
             Command::XAdd(_, _, _) => "XADD".to_string(),
+            Command::XRange(_, _, _) => "XRANGE".to_string(),
         }
     }
 }

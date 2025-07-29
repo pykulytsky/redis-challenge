@@ -316,7 +316,8 @@ impl Connection {
             Command::XAdd(key, id, items) => {
                 let mut db = self.db.write().await;
                 let entry = db.entry(key.clone().into_owned());
-                let stream_id = StreamId::try_from(id)?;
+                let mut err = None;
+
                 match entry {
                     std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
                         let value = occupied_entry.get_mut();
@@ -325,7 +326,11 @@ impl Connection {
                                 for pair in items.chunks(2) {
                                     let key = pair[0].expect_bulk_string().unwrap();
                                     let value = Value::from(pair[1].clone());
-                                    stream.insert(stream_id, key.to_string(), value);
+                                    if let Err(stream_err) =
+                                        stream.insert(id, key.to_string(), value)
+                                    {
+                                        err = Some(stream_err);
+                                    }
                                 }
                             }
                             _ => todo!("error"),
@@ -340,13 +345,16 @@ impl Connection {
                                     continue;
                                 };
                                 let value = Value::from(pair[1].clone());
-                                stream.insert(stream_id, key, value);
+                                if let Err(stream_err) = stream.insert(id, key, value) {
+                                    err = Some(stream_err);
+                                }
                             }
                         }
                         vacant_entry.insert(Value::Stream(stream));
                     }
-                }
-                id.clone()
+                };
+                err.map(|err| Resp::SimpleError(Cow::Owned(err.to_string())))
+                    .unwrap_or(id.clone())
             }
         };
         self.write_all(&resp.encode()).await?;

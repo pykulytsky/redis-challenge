@@ -6,14 +6,50 @@ use thiserror::Error;
 pub enum StreamError {
     #[error("Invalid format for stream id was provided")]
     MallformedStreamId,
+
+    #[error("ERR The ID specified in XADD is equal or smaller than the target stream top item")]
+    InvalidStreamId,
+
+    #[error("ERR The ID specified in XADD must be greater than 0-0")]
+    ZeroStreamId,
 }
 
-impl StreamId {}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct StreamId {
     pub milliseconds: usize,
     pub sequence_number: usize,
+}
+
+impl StreamId {
+    pub fn is_zero(&self) -> bool {
+        self.milliseconds == 0 && self.sequence_number == 0
+    }
+}
+
+impl PartialEq for StreamId {
+    fn eq(&self, other: &Self) -> bool {
+        self.milliseconds == other.milliseconds && self.sequence_number == other.sequence_number
+    }
+}
+
+impl Eq for StreamId {}
+
+impl PartialOrd for StreamId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let milliseconds_cmp = self.milliseconds.cmp(&other.milliseconds);
+        let cmp = match milliseconds_cmp {
+            std::cmp::Ordering::Less | std::cmp::Ordering::Greater => milliseconds_cmp,
+            std::cmp::Ordering::Equal => self.sequence_number.cmp(&other.sequence_number),
+        };
+
+        Some(cmp)
+    }
+}
+
+impl Ord for StreamId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        todo!()
+    }
 }
 
 impl TryFrom<&Resp<'_>> for StreamId {
@@ -52,7 +88,18 @@ impl Stream {
         }
     }
 
-    pub fn insert(&mut self, id: StreamId, key: String, value: Value) {
+    pub fn insert(&mut self, id: &Resp<'_>, key: String, value: Value) -> Result<(), StreamError> {
+        let id = StreamId::try_from(id)?;
+        if id.is_zero() {
+            return Err(StreamError::ZeroStreamId);
+        }
+
+        if let Some(last_id) = self.inner.keys().last() {
+            if id <= *last_id {
+                return Err(StreamError::InvalidStreamId);
+            }
+        }
+
         let stream_entry = self.inner.entry(id);
         match stream_entry {
             indexmap::map::Entry::Occupied(mut occupied_entry) => {
@@ -65,5 +112,7 @@ impl Stream {
                 vacant_entry.insert(index_map);
             }
         }
+
+        Ok(())
     }
 }
